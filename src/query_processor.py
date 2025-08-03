@@ -1,4 +1,6 @@
 import re
+import time
+import logging
 from typing import List, Dict, Tuple
 from src.embedding_engine import EmbeddingEngine
 from src.vector_store import VectorStore
@@ -8,20 +10,29 @@ class QueryProcessor:
     def __init__(self, embedding_engine: EmbeddingEngine, vector_store: VectorStore):
         self.embedding_engine = embedding_engine
         self.vector_store = vector_store
-        self.insurance_keywords = {
-            'coverage': ['cover', 'coverage', 'covered', 'include', 'included'],
-            'conditions': ['condition', 'requirement', 'criteria', 'eligibility'],
-            'waiting_period': ['waiting period', 'wait', 'waiting time'],
-            'premium': ['premium', 'payment', 'cost', 'price'],
-            'claim': ['claim', 'benefit', 'reimbursement'],
-            'exclusion': ['exclude', 'exclusion', 'not covered', 'except'],
-            'limit': ['limit', 'maximum', 'cap', 'ceiling'],
-            'deductible': ['deductible', 'excess', 'co-pay']
+        self.document_keywords = {
+            'inclusion': ['include', 'included', 'contain', 'feature', 'cover'],
+            'requirements': ['requirement', 'criteria', 'eligibility', 'condition'],
+            'timing': ['period', 'time', 'duration', 'deadline', 'wait'],
+            'amounts': ['amount', 'cost', 'price', 'fee', 'charge', 'rate'],
+            'benefits': ['benefit', 'advantage', 'feature', 'service'],
+            'exclusion': ['exclude', 'exclusion', 'not included', 'except'],
+            'limits': ['limit', 'maximum', 'minimum', 'cap', 'ceiling'],
+            'process': ['process', 'procedure', 'steps', 'method']
         }
     
     async def process_query(self, query: str, documents: List[Dict], decision_engine: DecisionEngine) -> str:
-        query_embedding = self.embedding_engine.generate_query_embedding(query)
+        start_time = time.time()
+        logging.debug(f"Starting query processing: '{query[:50]}...'")
         
+        # Step 1: Generate query embedding
+        embedding_start = time.time()
+        query_embedding = self.embedding_engine.generate_query_embedding(query)
+        embedding_time = round((time.time() - embedding_start) * 1000, 2)
+        logging.debug(f"Query embedding generated in {embedding_time}ms")
+        
+        # Step 2: Search for relevant chunks
+        search_start = time.time()
         relevant_chunks = self.vector_store.search_with_threshold(
             query_embedding, 
             threshold=0.3, 
@@ -31,15 +42,33 @@ class QueryProcessor:
         if not relevant_chunks:
             relevant_chunks = self.vector_store.search(query_embedding, k=5)
         
-        enhanced_chunks = self._enhance_with_keywords(query, relevant_chunks)
+        search_time = round((time.time() - search_start) * 1000, 2)
+        logging.debug(f"Vector search completed in {search_time}ms, found {len(relevant_chunks)} chunks")
         
+        # Step 3: Enhance chunks with keywords
+        enhance_start = time.time()
+        enhanced_chunks = self._enhance_with_keywords(query, relevant_chunks)
+        enhance_time = round((time.time() - enhance_start) * 1000, 2)
+        logging.debug(f"Chunk enhancement completed in {enhance_time}ms")
+        
+        # Step 4: Generate answer using decision engine
+        answer_start = time.time()
         answer = await decision_engine.generate_answer(
             query, 
             enhanced_chunks, 
             self._extract_query_intent(query)
         )
+        answer_time = round((time.time() - answer_start) * 1000, 2)
+        logging.debug(f"Answer generation completed in {answer_time}ms")
         
-        return answer
+        end_time = time.time()
+        total_compute_time = round((end_time - start_time) * 1000, 2)
+        
+        # Log detailed timing breakdown (for monitoring only)
+        logging.info(f"Query processing breakdown - Total: {total_compute_time}ms (Embedding: {embedding_time}ms, Search: {search_time}ms, Enhancement: {enhance_time}ms, Answer: {answer_time}ms)")
+        
+        # Return clean answer without timing
+        return answer.strip()
     
     def _extract_query_intent(self, query: str) -> Dict:
         query_lower = query.lower()
@@ -49,13 +78,13 @@ class QueryProcessor:
             'entities': []
         }
         
-        for category, keywords in self.insurance_keywords.items():
+        for category, keywords in self.document_keywords.items():
             for keyword in keywords:
                 if keyword in query_lower:
                     intent['keywords'].append(category)
                     break
         
-        if any(word in query_lower for word in ['does', 'is', 'are', 'cover', 'include']):
+        if any(word in query_lower for word in ['does', 'is', 'are', 'include', 'contain']):
             intent['type'] = 'coverage'
         elif any(word in query_lower for word in ['what', 'how much', 'amount']):
             intent['type'] = 'information'
@@ -70,13 +99,13 @@ class QueryProcessor:
     def _extract_entities(self, query: str) -> List[str]:
         entities = []
         
-        medical_terms = re.findall(r'\b(?:surgery|treatment|therapy|procedure|condition|disease|illness|injury)\b', query.lower())
-        entities.extend(medical_terms)
+        general_terms = re.findall(r'\b(?:process|procedure|requirement|condition|feature|service|benefit)\b', query.lower())
+        entities.extend(general_terms)
         
         amounts = re.findall(r'\$?\d+(?:,\d{3})*(?:\.\d{2})?', query)
         entities.extend(amounts)
         
-        time_periods = re.findall(r'\b(?:\d+\s*(?:days?|months?|years?)|waiting\s+period)\b', query.lower())
+        time_periods = re.findall(r'\b(?:\d+\s*(?:days?|months?|years?)|time\s+period)\b', query.lower())
         entities.extend(time_periods)
         
         return list(set(entities))
@@ -106,7 +135,7 @@ class QueryProcessor:
         
         relevance_score = exact_matches / total_query_words if total_query_words > 0 else 0
         
-        for category, keywords in self.insurance_keywords.items():
+        for category, keywords in self.document_keywords.items():
             if any(keyword in query_lower for keyword in keywords):
                 if any(keyword in chunk_text_lower for keyword in keywords):
                     relevance_score += 0.2

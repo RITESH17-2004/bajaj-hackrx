@@ -1,4 +1,5 @@
 import os
+import asyncio
 from typing import List, Dict, Tuple
 import json
 import re
@@ -7,12 +8,20 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Try to import Mistral, but fall back to free models if not available
+# Mistral commented out - using Gemini Flash only
+# try:
+#     from mistralai import Mistral
+#     MISTRAL_AVAILABLE = True
+# except ImportError:
+#     MISTRAL_AVAILABLE = False
+MISTRAL_AVAILABLE = False
+
+# Try to import Google Gemini
 try:
-    from mistralai import Mistral
-    MISTRAL_AVAILABLE = True
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
 except ImportError:
-    MISTRAL_AVAILABLE = False
+    GEMINI_AVAILABLE = False
 
 try:
     from .free_llm_engine import FreeLLMEngine
@@ -24,16 +33,33 @@ from .simple_answer_engine import SimpleAnswerEngine
 
 class DecisionEngine:
     def __init__(self):
-        self.mistral_key = os.getenv('MISTRAL_API_KEY', 'your-mistral-api-key-here')
-        self.use_mistral = (MISTRAL_AVAILABLE and 
-                           self.mistral_key and 
-                           self.mistral_key != 'your-mistral-api-key-here')
+        # Commented out Mistral setup
+        # self.mistral_key = os.getenv('MISTRAL_API_KEY', 'your-mistral-api-key-here')
+        # self.use_mistral = (MISTRAL_AVAILABLE and 
+        #                    self.mistral_key and 
+        #                    self.mistral_key != 'your-mistral-api-key-here')
         
-        if self.use_mistral:
-            self.client = Mistral(api_key=self.mistral_key)
-            self.max_context_length = 4000
-            self.temperature = 0.1
-            print("Using Mistral AI for LLM processing")
+        # Setup Gemini Flash with optimizations
+        self.gemini_key = os.getenv('GEMINI_API_KEY', 'your-gemini-api-key-here')
+        self.use_gemini = (GEMINI_AVAILABLE and 
+                          self.gemini_key and 
+                          self.gemini_key != 'your-gemini-api-key-here')
+        
+        if self.use_gemini:
+            genai.configure(api_key=self.gemini_key)
+            
+            # Use fastest Gemini model from env or default
+            model_name = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp')
+            self.gemini_model = genai.GenerativeModel(model_name)
+            
+            # Performance optimizations
+            self.max_context_length = 1000000  # Gemini Flash 1M context window
+            self.temperature = float(os.getenv('GEMINI_TEMPERATURE', '0.1'))
+            self.max_tokens = int(os.getenv('GEMINI_MAX_TOKENS', '200'))  # Increased for detailed answers
+            self.timeout = int(os.getenv('GEMINI_TIMEOUT', '30'))
+            
+            print(f"Using {model_name} for LLM processing with optimizations")
+            print(f"Max tokens: {self.max_tokens}, Temperature: {self.temperature}, Timeout: {self.timeout}s")
         else:
             if FREE_LLM_AVAILABLE:
                 try:
@@ -47,12 +73,15 @@ class DecisionEngine:
                 self.simple_engine = SimpleAnswerEngine()
                 print("Using simple rule-based engine for LLM processing")
         
-        self.max_context_length = 4000
+        self.max_context_length = self.max_context_length if hasattr(self, 'max_context_length') else 4000
         self.temperature = 0.1
     
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
-        if self.use_mistral:
-            return await self._generate_mistral_answer(query, relevant_chunks, query_intent)
+        if self.use_gemini:
+            return await self._generate_gemini_answer(query, relevant_chunks, query_intent)
+        # Commented out Mistral
+        # elif self.use_mistral:
+        #     return await self._generate_mistral_answer(query, relevant_chunks, query_intent)
         elif hasattr(self, 'free_llm'):
             return await self.free_llm.generate_answer(query, relevant_chunks, query_intent)
         elif hasattr(self, 'simple_engine'):
@@ -60,76 +89,120 @@ class DecisionEngine:
         else:
             return self._generate_fallback_answer(query, relevant_chunks)
     
-    async def _generate_mistral_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
+    async def _generate_gemini_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
         context = self._prepare_context(relevant_chunks)
         prompt = self._build_prompt(query, context, query_intent)
         
         try:
-            messages = [
-                {"role": "system", "content": self._get_system_prompt()},
-                {"role": "user", "content": prompt}
-            ]
+            # Combine system prompt and user prompt for Gemini
+            full_prompt = f"{self._get_system_prompt()}\n\n{prompt}"
             
-            response = self.client.chat.complete(
-                model="mistral-medium",
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=100
+            response = await asyncio.create_task(
+                self._call_gemini_async(full_prompt)
             )
             
-            answer = response.choices[0].message.content.strip()
+            answer = response.strip()
             return self._post_process_answer(answer, relevant_chunks)
             
         except Exception as e:
-            print(f"Mistral API error: {e}")
+            print(f"Gemini API error: {e}")
             return self._generate_fallback_answer(query, relevant_chunks)
     
+    async def _call_gemini_async(self, prompt: str) -> str:
+        """Optimized async wrapper for Gemini API call"""
+        loop = asyncio.get_event_loop()
+        
+        def make_request():
+            return self.gemini_model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=self.temperature,
+                    max_output_tokens=self.max_tokens,
+                    candidate_count=1,  # Single response for speed
+                    stop_sequences=None,  # No stop sequences for efficiency
+                )
+            ).text
+        
+        try:
+            # Use timeout for faster failure handling
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, make_request),
+                timeout=self.timeout
+            )
+            return response
+        except asyncio.TimeoutError:
+            print(f"Gemini API timeout after {self.timeout}s")
+            raise Exception("API timeout - try reducing document size or context")
+
+    # Commented out Mistral method
+    # async def _generate_mistral_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
+    #     context = self._prepare_context(relevant_chunks)
+    #     prompt = self._build_prompt(query, context, query_intent)
+    #     
+    #     try:
+    #         messages = [
+    #             {"role": "system", "content": self._get_system_prompt()},
+    #             {"role": "user", "content": prompt}
+    #         ]
+    #         
+    #         response = self.client.chat.complete(
+    #             model="mistral-medium",
+    #             messages=messages,
+    #             temperature=self.temperature,
+    #             max_tokens=100
+    #         )
+    #         
+    #         answer = response.choices[0].message.content.strip()
+    #         return self._post_process_answer(answer, relevant_chunks)
+    #         
+    #     except Exception as e:
+    #         print(f"Mistral API error: {e}")
+    #         return self._generate_fallback_answer(query, relevant_chunks)
+    
     def _get_system_prompt(self) -> str:
-        return """You are an expert insurance policy analyst. Provide concise, professional answers with essential details only.
+        return """You are an expert policy analyst. Provide detailed, accurate answers with specific information.
 
-STRICT RULES:
-1. MAXIMUM 50 words per answer - be direct and focused
-2. Include key numbers and timeframes naturally (avoid over-formatting)
-3. Include only the most important conditions - not every detail
-4. Use clean, professional language without extra formatting
-5. Structure: [Direct answer] + [key condition if essential]
-6. For yes/no questions: Answer directly with main requirement only
-7. For time periods: State timeframe with minimal context
-8. For definitions: Give core definition with key specifications only
-9. NO brackets, bullet points, or special formatting
-10. Base answers strictly on document context but keep focused
+RESPONSE GUIDELINES:
+1. Give comprehensive answers with all relevant details (50-80 words)
+2. Include specific numbers, timeframes, percentages, and conditions
+3. For yes/no questions: Start with yes/no, then provide full explanation with conditions
+4. Include eligibility criteria, limits, and important conditions
+5. Use precise language and exact terminology from the content
+6. Provide complete information in a single response
+7. Structure: Direct answer → Specific details → Key conditions/limitations
+8. Be thorough but clear and well-organized
 
-Example: "A grace period of thirty days is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits."""
+Example: "Yes, the policy covers maternity expenses, including childbirth and lawful medical termination of pregnancy. To be eligible, the female insured person must have been continuously covered for at least 24 months. The benefit is limited to two deliveries or terminations during the policy period."""
     
     def _build_prompt(self, query: str, context: str, query_intent: Dict) -> str:
         intent_guidance = ""
         response_template = ""
         
         if query_intent['type'] == 'coverage':
-            intent_guidance = "State clearly what is covered or not covered with key conditions only."
-            response_template = "Answer directly: Yes/No + what's covered + main eligibility requirement."
+            intent_guidance = "Provide comprehensive coverage details including eligibility, conditions, and limitations."
+            response_template = "Start with yes/no, then explain what's covered, eligibility criteria, and any limits or conditions."
         elif query_intent['type'] == 'timing':
-            intent_guidance = "Provide exact timeframe with essential context only."
-            response_template = "State the timeframe clearly with minimal necessary context."
+            intent_guidance = "Give specific timeframes with context and conditions."
+            response_template = "State the exact time period and explain what it applies to, including any eligibility requirements."
         elif query_intent['type'] == 'information':
-            intent_guidance = "Provide essential details and key requirements only."
-            response_template = "Give the main definition or details with key specifications."
+            intent_guidance = "Provide detailed explanation with specific criteria and conditions."
+            response_template = "Give comprehensive information including definitions, requirements, and applicable conditions."
         else:
-            intent_guidance = "Provide focused answer with essential details only."
-            response_template = "Answer directly with key information."
+            intent_guidance = "Provide thorough answer with all relevant details."
+            response_template = "Include specific numbers, conditions, eligibility criteria, and limitations where applicable."
         
-        prompt = f"""Answer this question using the policy context. Provide a professional, complete response with specific details.
+        prompt = f"""Answer this question thoroughly with all relevant details.
 
 {intent_guidance}
 
 {response_template}
 
-Policy Context:
+Context:
 {context}
 
 Question: {query}
 
-Answer:"""
+Provide a comprehensive answer:"""
         
         return prompt
     
@@ -138,7 +211,7 @@ Answer:"""
         total_length = 0
         
         # Increase context limit for detailed answers
-        max_context_for_detailed_answers = min(self.max_context_length + 1000, 5000)
+        max_context_for_detailed_answers = min(self.max_context_length + 2000, 8000)
         
         for chunk, score in relevant_chunks:
             chunk_text = chunk['text']
@@ -149,7 +222,7 @@ Answer:"""
             
             # Clean and enhance chunk text for better LLM processing
             enhanced_chunk = self._enhance_chunk_for_context(chunk_text)
-            context_parts.append(f"Policy Section: {enhanced_chunk}")
+            context_parts.append(enhanced_chunk)  # Remove "Document Section:" prefix
             total_length += chunk_length
         
         return "\n\n".join(context_parts)
@@ -275,22 +348,22 @@ Answer:"""
         numbers = re.findall(r'\b(\d+(?:\.\d+)?)\s*(days?|months?|years?|%|\$|Rs\.?)\b', best_chunk, re.IGNORECASE)
         if numbers:
             number, unit = numbers[0]
-            return f"According to the policy, the specified {unit.lower()} is {number} {unit.lower()}."
+            return f"The specified {unit.lower()} is {number} {unit.lower()}."
         
         # Look for yes/no coverage statements
         if any(word in best_chunk.lower() for word in ['covered', 'includes', 'benefits']):
-            return f"Based on the policy terms, this appears to be covered. {best_chunk[:100]}..."
+            return f"Yes, this is included."
         elif any(word in best_chunk.lower() for word in ['excluded', 'not covered', 'except']):
-            return f"Based on the policy terms, this appears to be excluded. {best_chunk[:100]}..."
+            return f"No, this is not covered."
         
-        # Default professional fallback
-        return f"Based on the available policy information: {best_chunk[:120]}..."
+        # Default clean fallback
+        return f"{best_chunk[:100]}..."
     
     def extract_reasoning(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> Dict:
         reasoning = {
             'confidence': self._calculate_confidence(answer, relevant_chunks),
             'source_chunks': [chunk['text'][:100] + "..." for chunk, _ in relevant_chunks[:3]],
-            'reasoning': f"Answer derived from {len(relevant_chunks)} relevant policy sections"
+            'reasoning': f"Answer derived from {len(relevant_chunks)} relevant document sections"
         }
         
         return reasoning

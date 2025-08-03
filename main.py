@@ -5,6 +5,7 @@ from typing import List, Optional
 import uvicorn
 import asyncio
 import logging
+import time
 
 from src.document_processor import DocumentProcessor
 from src.embedding_engine import EmbeddingEngine
@@ -50,6 +51,7 @@ decision_engine = DecisionEngine()
 
 @app.post("/hackrx/run", response_model=QueryResponse)
 async def run_query(request: QueryRequest):
+    request_start_time = time.time()
     try:
         logging.info(f"Processing document: {request.documents}")
         logging.info(f"Number of questions: {len(request.questions)}")
@@ -64,19 +66,27 @@ async def run_query(request: QueryRequest):
         
         answers = []
         for i, question in enumerate(request.questions):
+            question_start_time = time.time()
             logging.info(f"Processing question {i+1}/{len(request.questions)}: {question}")
             answer = await query_processor.process_query(
                 question, 
                 document_chunks,
                 decision_engine
             )
+            question_end_time = time.time()
+            question_time = round((question_end_time - question_start_time) * 1000, 2)
+            logging.info(f"Question {i+1} processed in {question_time}ms")
             answers.append(answer)
         
-        logging.info("All questions processed successfully")
+        request_end_time = time.time()
+        total_request_time = round((request_end_time - request_start_time) * 1000, 2)
+        logging.info(f"All questions processed successfully. Total request time: {total_request_time}ms")
         return QueryResponse(answers=answers)
     
     except Exception as e:
-        logging.error(f"Error processing request: {str(e)}")
+        request_end_time = time.time()
+        total_request_time = round((request_end_time - request_start_time) * 1000, 2)
+        logging.error(f"Error processing request: {str(e)} (Request time: {total_request_time}ms)")
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
 @app.get("/health")
@@ -85,7 +95,9 @@ async def health_check():
 
 @app.post("/test")
 async def test_endpoint():
+    test_start_time = time.time()
     try:
+        logging.info("Starting test endpoint")
         # Test with the hackathon document
         request = QueryRequest(
             documents="https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
@@ -103,10 +115,17 @@ async def test_endpoint():
             decision_engine
         )
         
-        return {"status": "success", "answer": answer}
+        test_end_time = time.time()
+        test_time = round((test_end_time - test_start_time) * 1000, 2)
+        logging.info(f"Test endpoint completed in {test_time}ms")
+        
+        return {"status": "success", "answer": answer, "test_time_ms": test_time}
         
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        test_end_time = time.time()
+        test_time = round((test_end_time - test_start_time) * 1000, 2)
+        logging.error(f"Test endpoint failed: {str(e)} (Test time: {test_time}ms)")
+        return {"status": "error", "message": str(e), "test_time_ms": test_time}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

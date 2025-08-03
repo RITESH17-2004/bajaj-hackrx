@@ -4,54 +4,57 @@ from typing import List, Dict, Tuple
 class SimpleAnswerEngine:
     """
     A simple, rule-based answer engine that works without any paid APIs.
-    Designed specifically for insurance policy questions.
+    Designed to work with any type of document.
     """
     
     def __init__(self):
-        self.insurance_patterns = {
-            'grace_period': {
-                'keywords': ['grace period', 'payment', 'premium', 'due date'],
+        self.general_patterns = {
+            'time_period': {
+                'keywords': ['period', 'time', 'duration', 'deadline', 'due', 'expires'],
                 'patterns': [
-                    r'grace period of (\d+\s*(?:days?|months?))',
-                    r'(\d+\s*(?:days?|months?))\s+grace period',
-                    r'within (\d+\s*(?:days?|months?))\s+(?:of|after)\s+(?:due date|payment)'
+                    r'period of (\d+\s*(?:days?|months?|years?))',
+                    r'(\d+\s*(?:days?|months?|years?))\s+(?:period|time|duration)',
+                    r'within (\d+\s*(?:days?|months?|years?))',
+                    r'after (\d+\s*(?:days?|months?|years?))'
                 ]
             },
-            'waiting_period': {
-                'keywords': ['waiting period', 'wait', 'coverage begins'],
+            'eligibility': {
+                'keywords': ['eligible', 'qualify', 'requirement', 'criteria', 'condition'],
                 'patterns': [
-                    r'waiting period of (\d+\s*(?:days?|months?|years?))',
-                    r'(\d+\s*(?:days?|months?|years?))\s+waiting period',
-                    r'after (\d+\s*(?:days?|months?|years?))\s+of\s+(?:continuous\s+)?coverage'
+                    r'eligible.*(?:if|when|after)',
+                    r'qualify.*(?:if|when|after)',
+                    r'requirement.*(?:is|includes)',
+                    r'must.*(?:be|have|meet)'
                 ]
             },
-            'maternity': {
-                'keywords': ['maternity', 'pregnancy', 'childbirth', 'delivery'],
+            'inclusion': {
+                'keywords': ['include', 'cover', 'contain', 'comprise', 'feature'],
                 'patterns': [
-                    r'maternity.*covered',
-                    r'pregnancy.*(?:covered|benefit)',
-                    r'childbirth.*(?:covered|benefit)'
+                    r'(?:includes?|covers?|contains?)',
+                    r'(?:is\s+)?(?:not\s+)?(?:included|covered|contained)',
+                    r'(?:features?|comprises?)'
                 ]
             },
-            'coverage': {
-                'keywords': ['cover', 'coverage', 'covered', 'benefit', 'include'],
+            'amounts': {
+                'keywords': ['amount', 'cost', 'price', 'fee', 'charge', 'rate'],
                 'patterns': [
-                    r'(?:does\s+)?(?:not\s+)?(?:cover|include)',
-                    r'(?:is\s+)?(?:not\s+)?covered',
-                    r'(?:includes?|benefits?)'
+                    r'(?:\$|Rs\.?|₹)\s*\d+(?:,\d{3})*(?:\.\d{2})?',
+                    r'\d+(?:\.\d+)?%',
+                    r'rate.*(?:is|of).*\d+',
+                    r'(?:costs?|fees?|charges?).*\d+'
                 ]
             }
         }
     
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
         if not relevant_chunks:
-            return "I couldn't find relevant information in the provided policy documents to answer this question."
+            return "No relevant information found in the provided documents to answer this question."
         
         query_lower = query.lower()
         best_answer = None
         
         # Try to match specific question patterns
-        for category, config in self.insurance_patterns.items():
+        for category, config in self.general_patterns.items():
             if any(keyword in query_lower for keyword in config['keywords']):
                 answer = self._extract_specific_answer(query, relevant_chunks, category, config)
                 if answer:
@@ -75,33 +78,27 @@ class SimpleAnswerEngine:
             for pattern in config['patterns']:
                 matches = re.findall(pattern, text_lower, re.IGNORECASE)
                 if matches:
-                    if category == 'grace_period':
-                        return f"A grace period of {matches[0]} is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits."
+                    if category == 'time_period':
+                        return f"The time period is {matches[0]}. {text[:150]}..."
                     
-                    elif category == 'waiting_period':
-                        if 'pre-existing' in query_lower or 'ped' in query_lower:
-                            return f"There is a waiting period of {matches[0]} of continuous coverage from the first policy inception for pre-existing diseases and their direct complications to be covered."
-                        else:
-                            return f"The waiting period is {matches[0]} for this coverage."
+                    elif category == 'eligibility':
+                        return f"The requirements are: {text[:200]}..."
                     
-                    elif category == 'maternity':
-                        if 'covered' in text_lower:
-                            return "Yes, the policy covers maternity expenses, including childbirth and lawful medical termination of pregnancy. To be eligible, the female insured person must have been continuously covered for at least 24 months."
-                        else:
-                            return "Maternity coverage details are specified in the policy terms and conditions."
+                    elif category == 'amounts':
+                        return f"The amount is {matches[0]}. {text[:150]}..."
             
-            # For coverage questions, look for yes/no indicators
-            if category == 'coverage':
-                if any(word in text_lower for word in ['yes', 'covered', 'includes', 'benefits']):
-                    return f"Yes, this is covered according to the policy. {text[:150]}..."
-                elif any(word in text_lower for word in ['no', 'not covered', 'excludes', 'except']):
-                    return f"No, this is not covered according to the policy. {text[:150]}..."
+            # For inclusion questions, look for yes/no indicators
+            if category == 'inclusion':
+                if any(word in text_lower for word in ['yes', 'included', 'covered', 'contains']):
+                    return f"Yes, this is included. {text[:200]}..."
+                elif any(word in text_lower for word in ['no', 'not included', 'excluded', 'except']):
+                    return f"No, this is not included. {text[:200]}..."
         
         return None
     
     def _generate_general_answer(self, query: str, chunks: List[Tuple[Dict, float]]) -> str:
         if not chunks:
-            return "I couldn't find relevant information in the provided policy documents."
+            return "No relevant information found in the provided documents."
         
         best_chunk = chunks[0][0]['text']
         
@@ -119,20 +116,20 @@ class SimpleAnswerEngine:
             # Look for amounts or percentages
             amounts = re.findall(r'(?:\$|Rs\.?|₹)?\s*\d+(?:,\d{3})*(?:\.\d{2})?|(?:\d+(?:\.\d+)?%)', best_chunk)
             if amounts:
-                return f"According to the policy, the amount is {amounts[0]}. {best_chunk[:100]}..."
+                return f"The amount is {amounts[0]}. {best_chunk[:150]}..."
         
         elif any(word in query_lower for word in ['when', 'time', 'period', 'duration']):
             # Look for time periods
             time_periods = re.findall(r'\b\d+\s*(?:days?|months?|years?)\b', best_chunk, re.IGNORECASE)
             if time_periods:
-                return f"The time period specified is {time_periods[0]}. {best_chunk[:100]}..."
+                return f"The time period is {time_periods[0]}. {best_chunk[:150]}..."
         
-        # Default: return the most relevant chunk with some context
-        return f"Based on the policy information: {best_chunk[:250]}..."
+        # Default: return the most relevant content with more detail
+        return f"{best_chunk[:300]}..."
     
     def extract_reasoning(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> Dict:
         return {
             'confidence': 0.75,  # Fixed confidence for rule-based system
             'source_chunks': [chunk['text'][:100] + "..." for chunk, _ in relevant_chunks[:3]],
-            'reasoning': "Answer generated using rule-based pattern matching and keyword extraction from policy documents"
+            'reasoning': "Answer generated using rule-based pattern matching and keyword extraction from document content"
         }

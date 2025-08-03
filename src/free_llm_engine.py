@@ -28,7 +28,7 @@ class FreeLLMEngine:
     
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
         if not relevant_chunks:
-            return "I couldn't find relevant information in the provided policy documents to answer this question."
+            return "No relevant information found in the provided documents to answer this question."
         
         # Combine top relevant chunks as context
         context = self._prepare_context(relevant_chunks[:3])
@@ -73,32 +73,33 @@ class FreeLLMEngine:
     
     def _generate_fallback_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         if not relevant_chunks:
-            return "I couldn't find relevant information in the provided policy documents to answer this question."
+            return "No relevant information found in the provided documents to answer this question."
         
-        # Use rule-based approach for common insurance queries
+        # Use rule-based approach for common document queries
         query_lower = query.lower()
         best_chunk = relevant_chunks[0][0]['text']
         
         # Extract key information based on query type
-        if any(word in query_lower for word in ['grace period', 'payment', 'premium']):
+        if any(word in query_lower for word in ['period', 'time', 'duration', 'deadline']):
             # Look for time periods in the text
             time_matches = re.findall(r'\b(?:\d+\s*(?:days?|months?|years?))\b', best_chunk, re.IGNORECASE)
             if time_matches:
-                return f"According to the policy, the grace period is {time_matches[0]}. {best_chunk[:100]}..."
+                return f"According to the document, the time period is {time_matches[0]}. {best_chunk[:100]}..."
         
-        if any(word in query_lower for word in ['waiting period', 'wait']):
-            time_matches = re.findall(r'\b(?:\d+\s*(?:days?|months?|years?))\b', best_chunk, re.IGNORECASE)
-            if time_matches:
-                return f"The waiting period is {time_matches[0]}. {best_chunk[:100]}..."
+        if any(word in query_lower for word in ['amount', 'cost', 'price', 'fee']):
+            # Look for monetary amounts or percentages
+            amount_matches = re.findall(r'(?:\$|Rs\.?|₹)?\s*\d+(?:,\d{3})*(?:\.\d{2})?|(?:\d+(?:\.\d+)?%)', best_chunk)
+            if amount_matches:
+                return f"The amount mentioned is {amount_matches[0]}. {best_chunk[:100]}..."
         
-        if any(word in query_lower for word in ['cover', 'coverage', 'include']):
-            if any(word in best_chunk.lower() for word in ['yes', 'covered', 'include']):
-                return f"Yes, this is covered. {best_chunk[:150]}..."
-            elif any(word in best_chunk.lower() for word in ['no', 'not covered', 'exclude']):
-                return f"No, this is not covered. {best_chunk[:150]}..."
+        if any(word in query_lower for word in ['include', 'contain', 'cover', 'feature']):
+            if any(word in best_chunk.lower() for word in ['yes', 'included', 'contains', 'features']):
+                return f"Yes, this is included. {best_chunk[:150]}..."
+            elif any(word in best_chunk.lower() for word in ['no', 'not included', 'excludes', 'except']):
+                return f"No, this is not included. {best_chunk[:150]}..."
         
         # Default response with best matching chunk
-        return f"Based on the policy information: {best_chunk[:200]}..."
+        return f"Based on the document: {best_chunk[:200]}..."
     
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         answer = answer.strip()
@@ -118,6 +119,6 @@ class FreeLLMEngine:
         reasoning = {
             'confidence': 0.8,  # Fixed confidence for free model
             'source_chunks': [chunk['text'][:100] + "..." for chunk, _ in relevant_chunks[:3]],
-            'reasoning': f"Answer derived from {len(relevant_chunks)} relevant policy sections using free AI models"
+            'reasoning': f"Answer derived from {len(relevant_chunks)} relevant document sections using free AI models"
         }
         return reasoning

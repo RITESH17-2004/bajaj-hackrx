@@ -1,18 +1,32 @@
+# Core API Framework
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
+
+# Document Processing
 requests
 PyPDF2
 python-docx
-sentence-transformers
-faiss-cpu
-numpy
-pydantic
 aiofiles
 beautifulsoup4
 lxml
-tiktoken
+
+# AI & Machine Learning (Optimized for speed)
+sentence-transformers
+faiss-cpu
+numpy
+google-generativeai  # Primary LLM - Gemini Flash 2.0
 transformers
 torch
-mistralai
+
+# Utilities
+pydantic
+tiktoken
 python-dotenv
+
+# Performance & Monitoring
+psutil  # System monitoring
+asyncio-throttle  # Rate limiting
+
+# Previously used (commented out)
+# mistralai  # Replaced with Gemini Flash for better speed/cost
