@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: bajaj-hackrx-app
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_server.py
+    envVars:
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: MODEL_CACHE_DIR
+        value: /tmp/models
+      - key: LOG_LEVEL
+        value: WARNING
+      - key: HOST
+        value: 0.0.0.0
+      - key: MAX_WORKERS
+        value: "1"
+    healthCheckPath: /health
