@@ -2,14 +2,20 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from typing import List, Dict
 import tiktoken
+import asyncio
+import functools
+from concurrent.futures import ThreadPoolExecutor
+import logging
 
 class EmbeddingEngine:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, model_name: str = "paraphrase-MiniLM-L3-v2", device: str = "cpu", executor: ThreadPoolExecutor = None):
+        self.model = SentenceTransformer(model_name).to(device)
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
         self.max_tokens = 512
+        self.executor = executor
     
-    def generate_embeddings(self, chunks: List[Dict]) -> np.ndarray:
+    async def generate_embeddings(self, chunks: List[Dict]) -> np.ndarray:
+        logging.info(f"[EmbeddingEngine] Generating embeddings for {len(chunks)} chunks...")
         texts = []
         for chunk in chunks:
             text = chunk['text']
@@ -17,14 +23,25 @@ class EmbeddingEngine:
                 text = self._truncate_text(text)
             texts.append(text)
         
-        embeddings = self.model.encode(texts, convert_to_numpy=True)
+        loop = asyncio.get_event_loop()
+        embeddings = await loop.run_in_executor(
+            self.executor,
+            functools.partial(self.model.encode, texts, convert_to_numpy=True)
+        )
+        logging.info("[EmbeddingEngine] Embeddings generated successfully.")
         return embeddings
     
-    def generate_query_embedding(self, query: str) -> np.ndarray:
+    async def generate_query_embedding(self, query: str) -> np.ndarray:
+        logging.info(f"[EmbeddingEngine] Generating query embedding for: {query[:50]}...")
         if self._count_tokens(query) > self.max_tokens:
             query = self._truncate_text(query)
         
-        embedding = self.model.encode([query], convert_to_numpy=True)
+        loop = asyncio.get_event_loop()
+        embedding = await loop.run_in_executor(
+            self.executor,
+            functools.partial(self.model.encode, [query], convert_to_numpy=True)
+        )
+        logging.info("[EmbeddingEngine] Query embedding generated successfully.")
         return embedding[0]
     
     def _count_tokens(self, text: str) -> int:

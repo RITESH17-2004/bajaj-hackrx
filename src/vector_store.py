@@ -3,22 +3,43 @@ import numpy as np
 from typing import List, Dict, Tuple
 import pickle
 import os
+import asyncio
+import functools
+from concurrent.futures import ThreadPoolExecutor
+import logging
 
 class VectorStore:
-    def __init__(self, dimension: int = 384):
+    def __init__(self, dimension: int = 384, executor: ThreadPoolExecutor = None):
         self.dimension = dimension
         self.index = faiss.IndexFlatIP(dimension)
         self.documents = []
         self.embeddings = None
+        self.executor = executor
         
-    def add_documents(self, documents: List[Dict], embeddings: np.ndarray):
+    async def add_documents(self, documents: List[Dict], embeddings: np.ndarray):
+        logging.info(f"[VectorStore] Adding {len(documents)} documents to vector store...")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            self.executor,
+            functools.partial(self._add_documents_sync, documents, embeddings)
+        )
+    
+    def _add_documents_sync(self, documents: List[Dict], embeddings: np.ndarray):
         self.documents = documents
         self.embeddings = embeddings
         
         normalized_embeddings = self._normalize_embeddings(embeddings)
         self.index.add(normalized_embeddings.astype('float32'))
-    
-    def search(self, query_embedding: np.ndarray, k: int = 5) -> List[Tuple[Dict, float]]:
+        logging.info(f"[VectorStore] Added {len(documents)} documents.")
+
+    async def search(self, query_embedding: np.ndarray, k: int = 5) -> List[Tuple[Dict, float]]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            functools.partial(self._search_sync, query_embedding, k)
+        )
+
+    def _search_sync(self, query_embedding: np.ndarray, k: int = 5) -> List[Tuple[Dict, float]]:
         if self.index.ntotal == 0:
             return []
         
@@ -33,8 +54,8 @@ class VectorStore:
         
         return results
     
-    def search_with_threshold(self, query_embedding: np.ndarray, threshold: float = 0.7, k: int = 10) -> List[Tuple[Dict, float]]:
-        results = self.search(query_embedding, k)
+    async def search_with_threshold(self, query_embedding: np.ndarray, threshold: float = 0.7, k: int = 10) -> List[Tuple[Dict, float]]:
+        results = await self.search(query_embedding, k)
         return [(doc, score) for doc, score in results if score >= threshold]
     
     def _normalize_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
@@ -42,9 +63,18 @@ class VectorStore:
         norms[norms == 0] = 1
         return embeddings / norms
     
-    def save_index(self, filepath: str):
+    async def save_index(self, filepath: str):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            self.executor,
+            functools.partial(self._save_index_sync, filepath)
+        )
+
+    def _save_index_sync(self, filepath: str):
         faiss.write_index(self.index, f"{filepath}.faiss")
-        
+        self._save_metadata(filepath)
+
+    def _save_metadata(self, filepath: str):
         with open(f"{filepath}_metadata.pkl", 'wb') as f:
             pickle.dump({
                 'documents': self.documents,
@@ -52,23 +82,37 @@ class VectorStore:
                 'dimension': self.dimension
             }, f)
     
-    def load_index(self, filepath: str):
+    async def load_index(self, filepath: str):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            functools.partial(self._load_index_sync, filepath)
+        )
+
+    def _load_index_sync(self, filepath: str):
         if os.path.exists(f"{filepath}.faiss") and os.path.exists(f"{filepath}_metadata.pkl"):
             self.index = faiss.read_index(f"{filepath}.faiss")
             
-            with open(f"{filepath}_metadata.pkl", 'rb') as f:
-                metadata = pickle.load(f)
-                self.documents = metadata['documents']
-                self.embeddings = metadata['embeddings']
-                self.dimension = metadata['dimension']
+            metadata = self._load_metadata(filepath)
+            self.documents = metadata['documents']
+            self.embeddings = metadata['embeddings']
+            self.dimension = metadata['dimension']
             
             return True
         return False
+
+    def _load_metadata(self, filepath: str):
+        with open(f"{filepath}_metadata.pkl", 'rb') as f:
+            return pickle.load(f)
     
-    def get_document_count(self) -> int:
+    async def get_document_count(self) -> int:
         return len(self.documents)
     
-    def clear(self):
-        self.index.reset()
+    async def clear(self):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            self.executor,
+            self.index.reset
+        )
         self.documents = []
         self.embeddings = None

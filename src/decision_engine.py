@@ -3,6 +3,11 @@ from typing import List, Dict, Tuple
 import json
 import re
 from dotenv import load_dotenv
+import asyncio
+import functools
+import time
+from concurrent.futures import ThreadPoolExecutor
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -23,7 +28,7 @@ except ImportError:
 from .simple_answer_engine import SimpleAnswerEngine
 
 class DecisionEngine:
-    def __init__(self):
+    def __init__(self, device: str = "cpu", executor: ThreadPoolExecutor = None):
         self.mistral_key = os.getenv('MISTRAL_API_KEY', 'your-mistral-api-key-here')
         self.use_mistral = (MISTRAL_AVAILABLE and 
                            self.mistral_key and 
@@ -33,22 +38,23 @@ class DecisionEngine:
             self.client = Mistral(api_key=self.mistral_key)
             self.max_context_length = 4000
             self.temperature = 0.1
-            print("Using Mistral AI for LLM processing")
+            logging.info("Using Mistral AI for LLM processing")
         else:
             if FREE_LLM_AVAILABLE:
                 try:
-                    self.free_llm = FreeLLMEngine()
-                    print("Using free Hugging Face models for LLM processing")
+                    self.free_llm = FreeLLMEngine(device=device)
+                    logging.info("Using free Hugging Face models for LLM processing")
                 except Exception as e:
-                    print(f"Failed to load Hugging Face models: {e}")
+                    logging.error(f"Failed to load Hugging Face models: {e}")
                     self.simple_engine = SimpleAnswerEngine()
-                    print("Using simple rule-based engine for LLM processing")
+                    logging.info("Using simple rule-based engine for LLM processing")
             else:
                 self.simple_engine = SimpleAnswerEngine()
-                print("Using simple rule-based engine for LLM processing")
+                logging.info("Using simple rule-based engine for LLM processing")
         
         self.max_context_length = 4000
         self.temperature = 0.1
+        self.executor = executor
     
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
         if self.use_mistral:
@@ -64,43 +70,165 @@ class DecisionEngine:
         context = self._prepare_context(relevant_chunks)
         prompt = self._build_prompt(query, context, query_intent)
         
+        loop = asyncio.get_event_loop()
+        
         try:
             messages = [
                 {"role": "system", "content": self._get_system_prompt()},
                 {"role": "user", "content": prompt}
             ]
             
-            response = self.client.chat.complete(
-                model="mistral-medium",
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=100
+            response = await loop.run_in_executor(
+                self.executor,
+                functools.partial(
+                    self.client.chat.complete,
+                    model="mistral-small-latest",
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=1500  # Increase max tokens for multiple answers
+                )
             )
             
             answer = response.choices[0].message.content.strip()
             return self._post_process_answer(answer, relevant_chunks)
             
         except Exception as e:
-            print(f"Mistral API error: {e}")
+            logging.error(f"Mistral API error: {e}")
+            # Implement exponential backoff for rate limiting
+            if "429" in str(e) or "Service tier capacity exceeded" in str(e):
+                for i in range(3):  # Max 3 retries
+                    delay = 2 ** i  # Exponential backoff: 1, 2, 4 seconds
+                    logging.warning(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay) # Use asyncio.sleep
+                    try:
+                        response = await loop.run_in_executor(
+                            self.executor,
+                            functools.partial(
+                                self.client.chat.complete,
+                                model="mistral-small-latest",
+                                messages=messages,
+                                temperature=self.temperature,
+                                max_tokens=100
+                            )
+                        )
+                        answer = response.choices[0].message.content.strip()
+                        return self._post_process_answer(answer, relevant_chunks)
+                    except Exception as retry_e:
+                        logging.error(f"Retry failed: {retry_e}")
             return self._generate_fallback_answer(query, relevant_chunks)
+
+    async def generate_answers_in_batch(self, queries: List[str], relevant_chunks_map: Dict[str, List[Tuple[Dict, float]]]) -> List[str]:
+        if not self.use_mistral:
+            # Fallback to sequential processing if Mistral is not available
+            answers = []
+            for query in queries:
+                relevant_chunks = relevant_chunks_map.get(query, [])
+                answer = await self.generate_answer(query, relevant_chunks, {})
+                answers.append(answer)
+            return answers
+
+        # Combine all questions and contexts into a single prompt
+        prompt = self._build_batch_prompt(queries, relevant_chunks_map)
+
+        try:
+            messages = [
+                {"role": "system", "content": self._get_batch_system_prompt()},
+                {"role": "user", "content": prompt}
+            ]
+
+            response = await loop.run_in_executor(
+                self.executor,
+                functools.partial(
+                    self.client.chat.complete,
+                    model="mistral-small-latest",
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=1500  # Increase max tokens for multiple answers
+                )
+            )
+
+            response_text = response.choices[0].message.content.strip()
+            return self._parse_batch_response(response_text, queries)
+
+        except Exception as e:
+            logging.error(f"Mistral API error in batch processing: {e}")
+            # Implement exponential backoff for rate limiting
+            if "429" in str(e) or "Service tier capacity exceeded" in str(e):
+                for i in range(3):  # Max 3 retries
+                    delay = 2 ** i  # Exponential backoff: 1, 2, 4 seconds
+                    logging.warning(f"Retrying batch in {delay} seconds...")
+                    time.sleep(delay)
+                    try:
+                        response = self.client.chat.complete(
+                            model="mistral-small-latest",
+                            messages=messages,
+                            temperature=self.temperature,
+                            max_tokens=1500  # Increase max tokens for multiple answers
+                        )
+                        response_text = response.choices[0].message.content.strip()
+                        return self._parse_batch_response(response_text, queries)
+                    except Exception as retry_e:
+                        logging.error(f"Batch retry failed: {retry_e}")
+            # Fallback to sequential processing on error
+            answers = []
+            for query in queries:
+                relevant_chunks = relevant_chunks_map.get(query, [])
+                answers.append(self._generate_fallback_answer(query, relevant_chunks))
+            return answers
+
+    def _build_batch_prompt(self, queries: List[str], relevant_chunks_map: Dict[str, List[Tuple[Dict, float]]]) -> str:
+        prompt_parts = []
+        for i, query in enumerate(queries):
+            context = self._prepare_context(relevant_chunks_map.get(query, []))
+            prompt_parts.append(f"Question {i+1}: {query}\nContext: {context}\n")
+        
+        return "Answer the following questions based on the provided context for each. Provide a concise and direct answer for each question.\n\n" + "\n".join(prompt_parts)
+
+    def _get_batch_system_prompt(self) -> str:
+        return """You are a subject matter expert providing precise answers to a series of questions based strictly on the provided document context for each. For each question, provide a direct and factual answer. If the information is not available in the context, state 'Not specified in document'.
+
+        Respond in the format:
+        Answer 1: [Your answer to question 1]
+        Answer 2: [Your answer to question 2]
+        """
+
+    def _parse_batch_response(self, response_text: str, queries: List[str]) -> List[str]:
+        answers = []
+        for i, query in enumerate(queries):
+            match = re.search(f"Answer {i+1}:(.*?)(?=Answer {i+2}:|$)", response_text, re.DOTALL)
+            if match:
+                answer = match.group(1).strip()
+                answers.append(answer)
+            else:
+                answers.append("Could not parse answer from the model's response.")
+        return answers
     
     def _get_system_prompt(self) -> str:
-        return """You are an expert insurance policy analyst. Provide concise, professional answers with essential details only.
+        return """You are a subject matter expert providing precise answers based strictly on the provided document.
 
-STRICT RULES:
-1. MAXIMUM 50 words per answer - be direct and focused
-2. Include key numbers and timeframes naturally (avoid over-formatting)
-3. Include only the most important conditions - not every detail
-4. Use clean, professional language without extra formatting
-5. Structure: [Direct answer] + [key condition if essential]
-6. For yes/no questions: Answer directly with main requirement only
-7. For time periods: State timeframe with minimal context
-8. For definitions: Give core definition with key specifications only
-9. NO brackets, bullet points, or special formatting
-10. Base answers strictly on document context but keep focused
+RESPONSE RULES:
+1. MAXIMUM 50 words - be direct and factual
+2. Answer only what the document explicitly states
+3. If information is missing, state "Not specified in document"
+4. For conflicting information, note "Document contains conflicting information"
+
+ANSWER FORMATS:
+- Yes/No questions: Direct answer + primary requirement only
+- Timeframes: State period with minimal essential context
+- Definitions: Core meaning + critical specifications only
+- Numbers/amounts: Include relevant figures and conditions naturally
+
+LANGUAGE REQUIREMENTS:
+- Professional, clear prose - no bullets, brackets, or special formatting
+- Include only the most critical conditions, not every detail
+- Structure: [Direct answer] + [essential qualifier if needed]
+- Avoid assumptions or inferences beyond document content
+
+Base all responses strictly on document evidence while maintaining focus and brevity.
+
 
 Example: "A grace period of thirty days is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits."""
-    
+
     def _build_prompt(self, query: str, context: str, query_intent: Dict) -> str:
         intent_guidance = ""
         response_template = ""
@@ -138,7 +266,7 @@ Answer:"""
         total_length = 0
         
         # Increase context limit for detailed answers
-        max_context_for_detailed_answers = min(self.max_context_length + 1000, 5000)
+        max_context_for_detailed_answers = min(self.max_context_length, 1500)
         
         for chunk, score in relevant_chunks:
             chunk_text = chunk['text']
@@ -275,7 +403,7 @@ Answer:"""
         numbers = re.findall(r'\b(\d+(?:\.\d+)?)\s*(days?|months?|years?|%|\$|Rs\.?)\b', best_chunk, re.IGNORECASE)
         if numbers:
             number, unit = numbers[0]
-            return f"According to the policy, the specified {unit.lower()} is {number} {unit.lower()}."
+            return f"According to the policy, the specified {unit.lower()} is {number} {unit.lower()}"
         
         # Look for yes/no coverage statements
         if any(word in best_chunk.lower() for word in ['covered', 'includes', 'benefits']):

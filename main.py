@@ -49,28 +49,24 @@ query_processor = QueryProcessor(embedding_engine, vector_store)
 decision_engine = DecisionEngine()
 
 @app.post("/hackrx/run", response_model=QueryResponse)
-async def run_query(request: QueryRequest):
+def run_query(request: QueryRequest):
     try:
         logging.info(f"Processing document: {request.documents}")
         logging.info(f"Number of questions: {len(request.questions)}")
         
         vector_store.clear()
         
-        document_chunks = await doc_processor.process_document(request.documents)
+        document_chunks = doc_processor.process_document(request.documents)
         logging.info(f"Extracted {len(document_chunks)} chunks from document")
         
         embeddings = embedding_engine.generate_embeddings(document_chunks)
         vector_store.add_documents(document_chunks, embeddings)
         
-        answers = []
-        for i, question in enumerate(request.questions):
-            logging.info(f"Processing question {i+1}/{len(request.questions)}: {question}")
-            answer = await query_processor.process_query(
-                question, 
-                document_chunks,
-                decision_engine
-            )
-            answers.append(answer)
+        answers = query_processor.process_queries_parallel(
+            request.questions, 
+            document_chunks,
+            decision_engine
+        )
         
         logging.info("All questions processed successfully")
         return QueryResponse(answers=answers)
@@ -80,11 +76,11 @@ async def run_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
 @app.get("/health")
-async def health_check():
+def health_check():
     return {"status": "healthy", "service": "query-retrieval-system"}
 
 @app.post("/test")
-async def test_endpoint():
+def test_endpoint():
     try:
         # Test with the hackathon document
         request = QueryRequest(
@@ -93,11 +89,11 @@ async def test_endpoint():
         )
         
         vector_store.clear()
-        document_chunks = await doc_processor.process_document(request.documents)
+        document_chunks = doc_processor.process_document(request.documents)
         embeddings = embedding_engine.generate_embeddings(document_chunks)
         vector_store.add_documents(document_chunks, embeddings)
         
-        answer = await query_processor.process_query(
+        answer = query_processor.process_query(
             request.questions[0], 
             document_chunks,
             decision_engine
@@ -108,5 +104,4 @@ async def test_endpoint():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+

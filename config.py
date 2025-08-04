@@ -4,7 +4,7 @@ from typing import Optional
 class Config:
     MISTRAL_API_KEY: Optional[str] = os.getenv('MISTRAL_API_KEY')
     MODEL_CACHE_DIR: str = os.getenv('MODEL_CACHE_DIR', '/tmp/models')
-    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'WARNING')  # Less verbose for production
+    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')  # Set to INFO for more verbose logging
     MAX_WORKERS: int = int(os.getenv('MAX_WORKERS', '2'))  # Optimize for Railway
     
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"

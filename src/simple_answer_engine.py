@@ -1,5 +1,8 @@
 import re
 from typing import List, Dict, Tuple
+import asyncio
+import functools
+from concurrent.futures import ThreadPoolExecutor
 
 class SimpleAnswerEngine:
     """
@@ -7,7 +10,7 @@ class SimpleAnswerEngine:
     Designed specifically for insurance policy questions.
     """
     
-    def __init__(self):
+    def __init__(self, executor: ThreadPoolExecutor = None):
         self.insurance_patterns = {
             'grace_period': {
                 'keywords': ['grace period', 'payment', 'premium', 'due date'],
@@ -42,8 +45,16 @@ class SimpleAnswerEngine:
                 ]
             }
         }
+        self.executor = executor
     
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            functools.partial(self._generate_answer_sync, query, relevant_chunks, query_intent)
+        )
+
+    def _generate_answer_sync(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
         if not relevant_chunks:
             return "I couldn't find relevant information in the provided policy documents to answer this question."
         
@@ -117,7 +128,7 @@ class SimpleAnswerEngine:
         
         elif any(word in query_lower for word in ['how much', 'amount', 'cost', 'price']):
             # Look for amounts or percentages
-            amounts = re.findall(r'(?:\$|Rs\.?|₹)?\s*\d+(?:,\d{3})*(?:\.\d{2})?|(?:\d+(?:\.\d+)?%)', best_chunk)
+            amounts = re.findall(r'(?:\$|Rs\.?|\u20b9)?\s*\d+(?:,\d{3})*(?:\.\d{2})?|(?:\d+(?:\.\d+)?%)', best_chunk)
             if amounts:
                 return f"According to the policy, the amount is {amounts[0]}. {best_chunk[:100]}..."
         

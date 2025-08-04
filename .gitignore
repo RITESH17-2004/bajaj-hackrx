@@ -1,1 +1,3 @@
-baj/
+venv/
+.env
+.env.examople

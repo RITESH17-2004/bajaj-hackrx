@@ -1,13 +1,17 @@
+import asyncio
 import re
+import logging
 from typing import List, Dict, Tuple
 from src.embedding_engine import EmbeddingEngine
 from src.vector_store import VectorStore
 from src.decision_engine import DecisionEngine
+from config import Config
 
 class QueryProcessor:
-    def __init__(self, embedding_engine: EmbeddingEngine, vector_store: VectorStore):
+    def __init__(self, embedding_engine: EmbeddingEngine, vector_store: VectorStore, concurrency_limit: int = Config.MAX_WORKERS):
         self.embedding_engine = embedding_engine
         self.vector_store = vector_store
+        self.semaphore = asyncio.Semaphore(concurrency_limit)
         self.insurance_keywords = {
             'coverage': ['cover', 'coverage', 'covered', 'include', 'included'],
             'conditions': ['condition', 'requirement', 'criteria', 'eligibility'],
@@ -18,29 +22,44 @@ class QueryProcessor:
             'limit': ['limit', 'maximum', 'cap', 'ceiling'],
             'deductible': ['deductible', 'excess', 'co-pay']
         }
-    
+
     async def process_query(self, query: str, documents: List[Dict], decision_engine: DecisionEngine) -> str:
-        query_embedding = self.embedding_engine.generate_query_embedding(query)
-        
-        relevant_chunks = self.vector_store.search_with_threshold(
-            query_embedding, 
-            threshold=0.3, 
-            k=10
-        )
-        
-        if not relevant_chunks:
-            relevant_chunks = self.vector_store.search(query_embedding, k=5)
-        
-        enhanced_chunks = self._enhance_with_keywords(query, relevant_chunks)
-        
-        answer = await decision_engine.generate_answer(
-            query, 
-            enhanced_chunks, 
-            self._extract_query_intent(query)
-        )
-        
-        return answer
-    
+        async with self.semaphore:
+            logging.info(f"Processing query: {query}")
+            
+            query_embedding = await self.embedding_engine.generate_query_embedding(query)
+            logging.info(f"Generated query embedding. Type: {type(query_embedding)}")
+            
+            relevant_chunks = await self.vector_store.search_with_threshold(
+                query_embedding, 
+                threshold=0.3, 
+                k=10
+            )
+            logging.info(f"Found {len(relevant_chunks)} relevant chunks with threshold.")
+            
+            if not relevant_chunks:
+                relevant_chunks = await self.vector_store.search(query_embedding, k=5)
+                logging.info(f"Found {len(relevant_chunks)} relevant chunks without threshold.")
+            
+            enhanced_chunks = self._enhance_with_keywords(query, relevant_chunks)
+            logging.info("Enhanced chunks with keywords.")
+            
+            query_intent = self._extract_query_intent(query)
+            logging.info(f"Extracted query intent: {query_intent}")
+            
+            answer = await decision_engine.generate_answer(
+                query, 
+                enhanced_chunks, 
+                query_intent
+            )
+            logging.info(f"Generated answer. Type: {type(answer)}")
+            
+            return answer
+
+    async def process_queries_parallel(self, queries: List[str], documents: List[Dict], decision_engine: DecisionEngine) -> List[str]:
+        tasks = [self.process_query(query, documents, decision_engine) for query in queries]
+        return await asyncio.gather(*tasks)
+
     def _extract_query_intent(self, query: str) -> Dict:
         query_lower = query.lower()
         intent = {
