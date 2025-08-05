@@ -16,3 +16,7 @@ transformers
 torch
 mistralai
 python-dotenv
+pandas
+openpyxl
+pytesseract
+Pillow

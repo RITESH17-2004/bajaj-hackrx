@@ -22,7 +22,6 @@ from contextlib import asynccontextmanager
 
 # Create a global ThreadPoolExecutor
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.info("Starting up...")
