@@ -11,13 +11,17 @@ import os
 from tempfile import NamedTemporaryFile
 import logging
 import asyncio
+import pandas as pd
+import pytesseract
+from PIL import Image
+pytesseract.pytesseract.tesseract_cmd = r'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
 class DocumentProcessor:
     def __init__(self, executor=None):
         self.executor = executor  # Can be None if not using ThreadPoolExecutor
         self.chunk_size = 512
         self.overlap = 50
-        self._memory_cache = {} 
+        self._memory_cache = {}
 
     async def process_document(self, document_url: str) -> List[Dict]:
         logging.info(f"[DocumentProcessor] Started processing document: {document_url}")
@@ -39,6 +43,14 @@ class DocumentProcessor:
         logging.info("[DocumentProcessor] Started parsing document")
         if 'pdf' in (content_type or '') or document_url.lower().endswith('.pdf'):
             text = await self._extract_pdf_text_streamed(document_url)
+        elif 'spreadsheet' in (content_type or '') or 'excel' in (content_type or '') or document_url.lower().endswith(('.xlsx', '.xls')):
+            response = await loop.run_in_executor(self.executor, requests.get, document_url)
+            response.raise_for_status()
+            text = await loop.run_in_executor(self.executor, self._extract_excel_text, BytesIO(response.content))
+        elif 'image' in (content_type or '') or document_url.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp')):
+            response = await loop.run_in_executor(self.executor, requests.get, document_url)
+            response.raise_for_status()
+            text = await loop.run_in_executor(self.executor, self._extract_image_text, BytesIO(response.content))
         else:
             # Run blocking requests call in executor
             response = await loop.run_in_executor(self.executor, requests.get, document_url)
@@ -116,6 +128,24 @@ class DocumentProcessor:
             return text
         except Exception as e:
             raise Exception(f"Error extracting email text: {str(e)}")
+
+    def _extract_excel_text(self, excel_bytes: BytesIO) -> str:
+        try:
+            df = pd.read_excel(excel_bytes, engine='openpyxl')
+            return df.to_string()
+        except Exception as e:
+            raise Exception(f"Error extracting Excel text: {str(e)}")
+
+    def _extract_image_text(self, image_bytes: BytesIO) -> str:
+        try:
+            image = Image.open(image_bytes)
+            text = pytesseract.image_to_string(image)
+            print("--- OCR Text ---")
+            print(text)
+            print("------------------")
+            return text
+        except Exception as e:
+            raise Exception(f"Error extracting image text: {str(e)}")
 
     def _create_chunks(self, text: str) -> List[Dict]:
         sentences = re.split(r'[.!?]+', text)
