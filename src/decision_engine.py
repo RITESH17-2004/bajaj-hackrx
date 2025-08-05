@@ -206,131 +206,176 @@ class DecisionEngine:
         return answers
 
     def _get_system_prompt(self) -> str:
-        return """You are a subject matter expert providing precise, professional answers based strictly on the provided document(s) and/or image(s).
-CRITICAL REQUIREMENTS:
-WORD TARGET: 35-45 words maximum - This ensures natural flow while staying well under 50 words
-SOURCE HIERARCHY: Answer ONLY from provided content in this order:
+        return """You are a context-aware AI assistant providing precise answers based strictly on provided source material (documents, images, Excel sheets, PDFs, etc.).
 
-Images (if provided) - Extract text, numbers, calculations, or data exactly as shown
-Documents (if provided) - Use only document content
-Never add external knowledge, assumptions, or web-searched information
+CORE PRINCIPLES:
+• Report source content exactly as shown, regardless of apparent correctness
+• Adapt response style based on content type and question complexity  
+• Never add external knowledge, calculations, or assumptions
+• Only answer what is explicitly present in source materials
 
-IMAGE ANALYSIS REQUIREMENTS:
+SOURCE CONTENT FIDELITY:
+• Mathematical operations: Report results exactly as shown (e.g., if source shows "9+5=22", answer "22")
+• Text content: Transcribe exactly as displayed, including apparent errors
+• Data values: Use specific amounts, dates, percentages from source, not standard values
+• Source content takes precedence over mathematical/factual accuracy
 
-Extract information exactly as displayed in images, regardless of apparent correctness
-For mathematical operations shown in images: report the result exactly as written (e.g., if image shows "9+5=22", answer "22")
-For text in images: transcribe exactly as shown, including any apparent errors or unconventional information
-For data in images: use the specific values, dates, amounts shown, not standard/expected values
-Image content takes precedence over general knowledge or mathematical accuracy
+STRICT SOURCE MATCHING:
+• Only answer questions about content EXPLICITLY written/shown in source
+• Never perform calculations, inferences, or logical deductions beyond what's written
+• If source shows "3+5=8" but asked about "5+500", respond "No relevant information found"
+• Question content must have direct match in source to provide answer
 
-MANDATORY for missing information: If any part of the question cannot be answered from the provided content, respond in the context of the question that this information is not present in the provided materials. Do not attempt to search for or provide external information.
-CONTENT COMPLETENESS: Every answer must be complete - Never cut off mid-sentence, always end with proper punctuation
-PROFESSIONAL TONE: Write naturally and professionally - Sound like a knowledgeable colleague, not robotic
-STRICT SOURCE LIMITATION: Under no circumstances provide information from sources other than the provided images and documents
-DOMAIN-SPECIFIC FOCUS:
-For insurance, legal, HR, and compliance queries, prioritize:
+CONTEXT-AWARE RESPONSE ADAPTATION:
+The user prompt will specify the appropriate response approach based on content analysis. Follow the provided instruction and template precisely while maintaining these standards:
 
-Waiting periods and effective dates
-Dollar amounts, percentages, or coverage limits
-Required documentation or approvals
-Deadlines and grace periods
-Pre-authorization requirements
-Key exclusions or conditions
-
-NATURAL WRITING GUIDELINES:
-
-Use complete, flowing sentences that sound conversational
-Include specific numbers and timeframes naturally within sentences
-Write as you would explain to a colleague – clear but professional
-Each answer should feel complete and satisfying
-
-EFFICIENT PHRASING APPROACHES (not rigid templates):
-Use the following as helpful phrasing cues, not fixed formats. Answers should feel natural, varied, and contextually appropriate—not copy-pasted templates. These phrasing examples help convey key information clearly and efficiently, but each response must adapt based on the question and provided content.
-Coverage:
-
-Example: "Yes, cataract surgery is covered after a 24-month waiting period."
-Goal: Clearly state if something is covered and under what condition.
-
-Waiting Periods:
-
-Example: "There is a 30-day waiting period for most illnesses."
-Goal: Include exact timeframes, naturally embedded.
-
-Eligibility/Requirements:
-
-Example: "To be eligible for maternity benefits, the insured must complete 9 months of continuous coverage."
-Goal: Highlight the main condition for eligibility, without filler.
-
-Definitions:
-
-Example: "Inpatient care refers to hospitalization for a minimum of 24 hours."
-Goal: Give precise, policy-based definitions from provided content.
-
-Benefits:
-
-Example: "The policy offers cashless hospitalization at network hospitals, provided pre-authorization is obtained."
-Goal: State the benefit and the main condition to receive it.
-
-Image-Based Responses:
-
-Example: "According to the calculation shown, 9+5 equals 22."
-Goal: Report image content exactly as displayed, without correction.
-
-RESPONSE STRUCTURE:
-
-Lead with direct answer (10–15 words): Yes/no, timeframe, or core definition
-Add most important condition/detail (15–20 words): Primary requirement or key limitation
-Include critical limitation only if essential (5–10 words): Major exclusion or additional condition
+• Word target: 35-45 words maximum for natural flow
+• Professional tone: Sound knowledgeable but conversational
+• Complete responses: Always end with proper punctuation
+• Prioritize: Direct answers, timeframes, amounts, key conditions from source
 
 CONTENT PRIORITIZATION:
+• Essential: Direct answer, exact values, primary requirements from source
+• Include if space: Key limitations, specific conditions  
+• Eliminate: Secondary details, background context, redundant information
 
-Essential: Direct answer, timeframes, amounts, primary requirements from images/documents
-Include if space: Key limitations, specific conditions, critical exclusions
-Eliminate: Secondary details, multiple examples, background context, redundant information
+MISSING INFORMATION HANDLING:
+If any part cannot be answered from provided content, state this information is not present in the provided materials. Never search for or provide external information.
 
 QUALITY STANDARDS:
+• Natural, professional writing - not robotic or choppy
+• Focus on one key point per answer
+• Accuracy to source content over general correctness
+• Adapt response complexity to match question tone and content type"""
 
-Must sound professional and natural – not choppy or robotic
-Every answer complete with proper punctuation
-Focus on one key point per answer
-Accuracy to source content over mathematical/factual correctness
-If approaching 45 words, prioritize essential information only
-
-IMPORTANT: When images contain information that contradicts general knowledge (like mathematical errors, unusual data, or unconventional statements), always defer to what is explicitly shown in the image. Your role is to extract and report information from provided sources, not to correct or verify it.
-Remember: Write with professional brevity while maintaining natural, conversational flow. Base all answers strictly on provided image and document content, prioritizing image information when available.
-"""
+    def _analyze_source_content_type(self, context: str) -> str:
+        """Analyze the type of content in the source material"""
+        context_lower = context.lower()
+        
+        # Mathematical content detection
+        math_indicators = [
+            r'\d+\s*[\+\-\*\/]\s*\d+\s*=\s*\d+',  # calculations like "5+3=8"
+            r'equals?\s*\d+',
+            r'result\s*(?:is|=)\s*\d+',
+            r'sum\s*(?:is|=)\s*\d+',
+            r'total\s*(?:is|=)\s*\d+'
+        ]
+        
+        for pattern in math_indicators:
+            if re.search(pattern, context_lower):
+                return 'mathematical'
+        
+        # Data/numerical content
+        data_indicators = [
+            r'\$\d+(?:,\d{3})*(?:\.\d{2})?',  # currency
+            r'\d+(?:\.\d+)?%',                # percentages
+            r'amount.*\d+',
+            r'price.*\d+',
+            r'cost.*\d+',
+            r'rate.*\d+'
+        ]
+        
+        if any(re.search(pattern, context_lower) for pattern in data_indicators):
+            return 'data'
+        
+        # Policy/insurance content
+        policy_indicators = [
+            'coverage', 'covered', 'policy', 'benefit', 'claim',
+            'deductible', 'premium', 'waiting period', 'grace period',
+            'eligibility', 'terms', 'conditions', 'exclusion'
+        ]
+        
+        if any(indicator in context_lower for indicator in policy_indicators):
+            return 'policy'
+        
+        return 'general'
 
     def _build_prompt(self, query: str, context: str, query_intent: Dict) -> str:
-        intent_guidance = ""
-        response_template = ""
+        # Analyze both query intent and source content type
+        content_type = self._analyze_source_content_type(context)
+        query_content_type = query_intent.get('content_type', 'unknown')
+        question_tone = query_intent.get('question_tone', 'neutral')
+        intent_type = query_intent.get('type', 'general')
+        
+        # Smart response selection based on content and question analysis
+        response_guidance = self._select_response_approach(
+            content_type, query_content_type, question_tone, intent_type
+        )
+        
+        prompt = f"""{response_guidance['instruction']}
 
-        if query_intent.get('type') == 'coverage':
-            intent_guidance = "State clearly what is covered or not covered with key conditions only."
-            response_template = "Answer directly: Yes/No + what's covered + main eligibility requirement."
-        elif query_intent.get('type') == 'timing':
-            intent_guidance = "Provide exact timeframe with essential context only."
-            response_template = "State the timeframe clearly with minimal necessary context."
-        elif query_intent.get('type') == 'information':
-            intent_guidance = "Provide essential details and key requirements only."
-            response_template = "Give the main definition or details with key specifications."
-        else:
-            intent_guidance = "Provide focused answer with essential details only."
-            response_template = "Answer directly with key information."
-
-        prompt = f"""Answer this question using the policy context. Provide a professional, complete response with specific details.
-
-{intent_guidance}
-
-{response_template}
-
-Policy Context:
+Source Material:
 {context}
 
 Question: {query}
 
-Answer:"""
+{response_guidance['template']}"""
 
-        return prompt    
+        return prompt
+
+    def _select_response_approach(self, content_type: str, query_content_type: str, 
+                                question_tone: str, intent_type: str) -> Dict[str, str]:
+        """Intelligently select response approach based on content and query analysis"""
+        
+        # Mathematical content handling
+        if content_type == 'mathematical' or query_content_type == 'mathematical':
+            return {
+                'instruction': 'Report mathematical calculations and results exactly as shown in the source material. Never perform calculations yourself.',
+                'template': 'Answer: Report the exact calculation or result as displayed in the source.'
+            }
+        
+        # Data queries with specific tone adaptation
+        if content_type == 'data' or query_content_type == 'data':
+            if question_tone == 'direct':
+                return {
+                    'instruction': 'Provide the specific data value requested with minimal context.',
+                    'template': 'Answer: State the exact amount, percentage, or value from the source.'
+                }
+            else:
+                return {
+                    'instruction': 'Provide the data value with relevant context from the source material.',
+                    'template': 'Answer: Include the specific value plus essential context from the source.'
+                }
+        
+        # Policy content with question tone adaptation
+        if content_type == 'policy' or intent_type in ['coverage', 'timing', 'information']:
+            if question_tone == 'binary':
+                return {
+                    'instruction': 'Provide a clear yes/no answer with the most important condition.',
+                    'template': 'Answer: Yes/No + key condition or requirement.'
+                }
+            elif question_tone == 'direct':
+                return {
+                    'instruction': 'Give a direct, concise answer with essential details only.',
+                    'template': 'Answer: Direct response with key timeframes or conditions.'
+                }
+            elif question_tone == 'complex':
+                return {
+                    'instruction': 'Provide comprehensive answer addressing the complexity while staying concise.',
+                    'template': 'Answer: Address the main aspects with relevant conditions and limitations.'
+                }
+            else:
+                return {
+                    'instruction': 'Provide professional answer with specific policy details.',
+                    'template': 'Answer: Clear explanation with relevant policy information.'
+                }
+        
+        # General content - adapt to question tone
+        if question_tone == 'direct':
+            return {
+                'instruction': 'Provide straightforward answer focusing on the core question.',
+                'template': 'Answer: Direct response based on source material.'
+            }
+        elif question_tone == 'complex':
+            return {
+                'instruction': 'Address the complexity of the question with comprehensive yet concise response.',
+                'template': 'Answer: Thorough response covering key aspects from the source.'
+            }
+        else:
+            return {
+                'instruction': 'Provide clear, professional answer based strictly on source material.',
+                'template': 'Answer: Professional response with relevant details from the source.'
+            }    
 
     def _prepare_context(self, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         context_parts = []
@@ -357,18 +402,57 @@ Answer:"""
         """Clean chunk text for better LLM processing without special formatting"""
         import re
 
-        # Just clean the text without adding highlighting that might confuse the LLM
+        # Clean escape characters first
+        chunk_text = self._clean_escape_characters(chunk_text)
+        
         # Remove extra whitespace and clean formatting
         chunk_text = re.sub(r'\s+', ' ', chunk_text)
         chunk_text = chunk_text.strip()
 
         return chunk_text
 
+    def _clean_escape_characters(self, text: str) -> str:
+        """Remove ALL unwanted backslash escape characters comprehensively"""
+        import re
+        import unicodedata
+        
+        # Normalize Unicode characters first
+        text = unicodedata.normalize('NFKD', text)
+        
+        # Handle specific escape sequences first
+        text = text.replace('\\"', '"')    # \" -> "
+        text = text.replace("\\'", "'")    # \' -> '
+        text = text.replace('\\\\', '\\')  # \\ -> \ (but we'll clean this later)
+        text = text.replace('\\n', ' ')    # \n -> space
+        text = text.replace('\\t', ' ')    # \t -> space  
+        text = text.replace('\\r', '')     # \r -> nothing
+        text = text.replace('\\f', ' ')    # \f -> space
+        text = text.replace('\\b', ' ')    # \b -> space
+        text = text.replace('\\v', ' ')    # \v -> space
+        
+        # Remove any remaining backslash followed by non-whitespace character
+        text = re.sub(r'\\([^\s\\])', r'\1', text)
+        
+        # Remove any standalone backslashes (including double backslashes converted above)
+        text = re.sub(r'\\+', ' ', text)
+        
+        # Normalize quotes - convert curly quotes to straight quotes
+        text = text.replace('"', '"').replace('"', '"')  # Smart quotes to regular
+        text = text.replace(''', "'").replace(''', "'")  # Smart single quotes to regular
+        
+        # Clean up multiple spaces created by replacements
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
+
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         answer = answer.strip()
 
         if not answer or answer.lower().startswith("i don't know") or "not found" in answer.lower():
             return self._generate_fallback_answer("", relevant_chunks)
+
+        # Clean escape characters
+        answer = self._clean_escape_characters(answer)
 
         # Clean up spacing
         answer = re.sub(r'\s+', ' ', answer)

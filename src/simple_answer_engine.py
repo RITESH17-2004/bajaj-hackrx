@@ -59,23 +59,54 @@ class SimpleAnswerEngine:
             return "I couldn't find relevant information in the provided policy documents to answer this question."
         
         query_lower = query.lower()
+        content_type = query_intent.get('content_type', 'unknown')
+        question_tone = query_intent.get('question_tone', 'neutral')
+        
+        # Handle mathematical content specially
+        if content_type == 'mathematical':
+            return self._handle_mathematical_content(query, relevant_chunks)
+        
         best_answer = None
         
         # Try to match specific question patterns
         for category, config in self.insurance_patterns.items():
             if any(keyword in query_lower for keyword in config['keywords']):
-                answer = self._extract_specific_answer(query, relevant_chunks, category, config)
+                answer = self._extract_specific_answer(query, relevant_chunks, category, config, question_tone)
                 if answer:
                     best_answer = answer
                     break
         
         # If no specific pattern matched, use general approach
         if not best_answer:
-            best_answer = self._generate_general_answer(query, relevant_chunks)
+            best_answer = self._generate_general_answer(query, relevant_chunks, query_intent)
         
-        return best_answer
+        # Clean escape characters from the final answer
+        return self._clean_escape_characters(best_answer)
     
-    def _extract_specific_answer(self, query: str, chunks: List[Tuple[Dict, float]], category: str, config: Dict) -> str:
+    def _handle_mathematical_content(self, query: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
+        """Handle mathematical questions by reporting exact content from source"""
+        import re
+        
+        for chunk, score in relevant_chunks:
+            text = chunk['text']
+            
+            # Look for mathematical expressions
+            math_patterns = [
+                r'\d+\s*[\+\-\*\/]\s*\d+\s*=\s*\d+',  # "5+3=8"
+                r'equals?\s*\d+',
+                r'result\s*(?:is|=)\s*\d+',
+                r'sum\s*(?:is|=)\s*\d+',
+                r'total\s*(?:is|=)\s*\d+'
+            ]
+            
+            for pattern in math_patterns:
+                matches = re.findall(pattern, text.lower())
+                if matches:
+                    return f"According to the source material: {matches[0]}"
+        
+        return "No mathematical calculations found in the provided source material."
+    
+    def _extract_specific_answer(self, query: str, chunks: List[Tuple[Dict, float]], category: str, config: Dict, question_tone: str = 'neutral') -> str:
         query_lower = query.lower()
         
         for chunk, score in chunks:
@@ -110,7 +141,7 @@ class SimpleAnswerEngine:
         
         return None
     
-    def _generate_general_answer(self, query: str, chunks: List[Tuple[Dict, float]]) -> str:
+    def _generate_general_answer(self, query: str, chunks: List[Tuple[Dict, float]], query_intent: Dict = None) -> str:
         if not chunks:
             return "I couldn't find relevant information in the provided policy documents."
         
@@ -141,6 +172,29 @@ class SimpleAnswerEngine:
         # Default: return the most relevant chunk with some context
         return f"Based on the policy information: {best_chunk[:250]}..."
     
+    def _clean_escape_characters(self, text: str) -> str:
+        """Remove ALL unwanted backslash escape characters comprehensively"""
+        import re
+        
+        # Handle specific escape sequences first
+        text = text.replace('\\"', '"')    # \" -> "
+        text = text.replace("\\'", "'")    # \' -> '
+        text = text.replace('\\\\', '\\')  # \\ -> \
+        text = text.replace('\\n', ' ')    # \n -> space
+        text = text.replace('\\t', ' ')    # \t -> space  
+        text = text.replace('\\r', '')     # \r -> nothing
+        
+        # Remove any remaining backslash followed by non-whitespace character
+        text = re.sub(r'\\([^\s])', r'\1', text)
+        
+        # Remove any standalone backslashes that aren't part of valid content
+        text = re.sub(r'\\(?=\s|$)', ' ', text)
+        
+        # Clean up multiple spaces created by replacements
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
+
     def extract_reasoning(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> Dict:
         return {
             'confidence': 0.75,  # Fixed confidence for rule-based system

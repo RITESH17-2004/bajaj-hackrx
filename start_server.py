@@ -14,6 +14,7 @@ from src.embedding_engine import EmbeddingEngine
 from src.vector_store import VectorStore
 from src.query_processor import QueryProcessor
 from src.decision_engine import DecisionEngine
+from src.request_logger import RequestLogger
 from config import Config
 
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     app.state.vector_store = VectorStore(app.state.embedding_engine.get_embedding_dimension(), app.state.executor)
     app.state.query_processor = QueryProcessor(app.state.embedding_engine, app.state.vector_store)
     app.state.decision_engine = DecisionEngine(device=app.state.device, executor=app.state.executor)
+    app.state.request_logger = RequestLogger()
 
     yield
     logging.info("Shutting down ThreadPoolExecutor...")
@@ -91,6 +93,12 @@ class QueryResponse(BaseModel):
 async def run_query(request: QueryRequest):
     request_start_time = time.time()
     try:
+        # Log the request asynchronously (fire and forget)
+        asyncio.create_task(app.state.request_logger.log_request(
+            document_url=request.documents,
+            questions=request.questions
+        ))
+        
         logging.info(f"Processing document: {request.documents}")
         logging.info(f"Number of questions: {len(request.questions)}")
         

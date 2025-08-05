@@ -42,6 +42,11 @@ class FreeLLMEngine:
 
         # Combine top relevant chunks as context
         context = self._prepare_context(relevant_chunks[:3])
+        
+        # Check for mathematical content - handle specially
+        content_type = query_intent.get('content_type', 'unknown')
+        if content_type == 'mathematical':
+            return self._handle_mathematical_content(query, context, relevant_chunks)
 
         try:
             # Use the question-answering pipeline
@@ -56,13 +61,35 @@ class FreeLLMEngine:
 
             # If confidence is too low, try text generation approach
             if confidence < 0.3:
-                answer = self._generate_fallback_answer(query, relevant_chunks)
+                answer = self._generate_fallback_answer(query, relevant_chunks, query_intent)
 
             return self._post_process_answer(answer, relevant_chunks)
 
         except Exception as e:
             logging.error(f"Error with free LLM: {e}")
-            return self._generate_fallback_answer(query, relevant_chunks)
+            return self._generate_fallback_answer(query, relevant_chunks, query_intent)
+    
+    def _handle_mathematical_content(self, query: str, context: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
+        """Handle mathematical questions by reporting exact content from source"""
+        import re
+        
+        # Look for mathematical expressions in the context
+        math_patterns = [
+            r'\d+\s*[\+\-\*\/]\s*\d+\s*=\s*\d+',  # "5+3=8"
+            r'equals?\s*\d+',
+            r'result\s*(?:is|=)\s*\d+',
+            r'sum\s*(?:is|=)\s*\d+',
+            r'total\s*(?:is|=)\s*\d+'
+        ]
+        
+        context_lower = context.lower()
+        for pattern in math_patterns:
+            matches = re.findall(pattern, context_lower)
+            if matches:
+                return f"According to the source material: {matches[0]}"
+        
+        # If no mathematical expressions found
+        return "No mathematical calculations found in the provided source material."
 
     def _prepare_context(self, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         context_parts = []
@@ -81,7 +108,7 @@ class FreeLLMEngine:
 
         return " ".join(context_parts)
 
-    def _generate_fallback_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
+    def _generate_fallback_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict = None) -> str:
         if not relevant_chunks:
             return "I couldn't find relevant information in the provided policy documents to answer this question."
 
@@ -110,11 +137,37 @@ class FreeLLMEngine:
         # Default response with best matching chunk
         return f"Based on the policy information: {best_chunk[:200]}..."
 
+    def _clean_escape_characters(self, text: str) -> str:
+        """Remove ALL unwanted backslash escape characters comprehensively"""
+        import re
+        
+        # Handle specific escape sequences first
+        text = text.replace('\\"', '"')    # \" -> "
+        text = text.replace("\\'", "'")    # \' -> '
+        text = text.replace('\\\\', '\\')  # \\ -> \
+        text = text.replace('\\n', ' ')    # \n -> space
+        text = text.replace('\\t', ' ')    # \t -> space  
+        text = text.replace('\\r', '')     # \r -> nothing
+        
+        # Remove any remaining backslash followed by non-whitespace character
+        text = re.sub(r'\\([^\s])', r'\1', text)
+        
+        # Remove any standalone backslashes that aren't part of valid content
+        text = re.sub(r'\\(?=\s|$)', ' ', text)
+        
+        # Clean up multiple spaces created by replacements
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
+
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         answer = answer.strip()
 
         if not answer:
             return self._generate_fallback_answer("", relevant_chunks)
+
+        # Clean escape characters
+        answer = self._clean_escape_characters(answer)
 
         # Clean up the answer
         answer = re.sub(r'\s+', ' ', answer)

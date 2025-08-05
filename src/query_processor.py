@@ -57,8 +57,14 @@ class QueryProcessor:
         intent = {
             'type': 'general',
             'keywords': [],
-            'entities': []
+            'entities': [],
+            'content_type': 'unknown',
+            'question_tone': 'neutral'
         }
+        
+        # Enhanced content type detection
+        intent['content_type'] = self._detect_content_type(query_lower)
+        intent['question_tone'] = self._analyze_question_tone(query_lower)
         
         for category, keywords in self.insurance_keywords.items():
             for keyword in keywords:
@@ -66,17 +72,93 @@ class QueryProcessor:
                     intent['keywords'].append(category)
                     break
         
-        if any(word in query_lower for word in ['does', 'is', 'are', 'cover', 'include']):
+        # Enhanced intent type classification
+        if intent['content_type'] == 'mathematical':
+            intent['type'] = 'mathematical'
+        elif intent['content_type'] == 'data':
+            intent['type'] = 'data_query'
+        elif any(word in query_lower for word in ['does', 'is', 'are', 'cover', 'include']):
             intent['type'] = 'coverage'
         elif any(word in query_lower for word in ['what', 'how much', 'amount']):
             intent['type'] = 'information'
         elif any(word in query_lower for word in ['when', 'waiting', 'period']):
             intent['type'] = 'timing'
+        elif any(word in query_lower for word in ['define', 'definition', 'what is', 'what does', 'explain']):
+            intent['type'] = 'definitional'
+        elif query_lower.endswith('?') and len(query.split()) <= 4:
+            intent['type'] = 'factual_direct'
         
         entities = self._extract_entities(query)
         intent['entities'] = entities
         
         return intent
+
+    def _detect_content_type(self, query_lower: str) -> str:
+        """Detect the type of content the question is asking about"""
+        
+        # Mathematical content detection
+        math_patterns = [
+            r'what is \d+[\+\-\*\/]\d+',
+            r'calculate \d+',
+            r'\d+[\+\-\*\/]\d+',
+            r'equals?',
+            r'sum of',
+            r'result of'
+        ]
+        
+        for pattern in math_patterns:
+            if re.search(pattern, query_lower):
+                return 'mathematical'
+        
+        # Data content detection
+        data_patterns = [
+            r'amount',
+            r'price',
+            r'cost',
+            r'value',
+            r'number',
+            r'percentage',
+            r'rate',
+            r'figure'
+        ]
+        
+        if any(pattern in query_lower for pattern in data_patterns):
+            return 'data'
+        
+        # Policy content detection
+        policy_patterns = [
+            'coverage', 'covered', 'policy', 'benefit', 'claim', 
+            'deductible', 'premium', 'waiting period', 'grace period',
+            'eligibility', 'terms', 'conditions'
+        ]
+        
+        if any(pattern in query_lower for pattern in policy_patterns):
+            return 'policy'
+        
+        # General informational
+        return 'general'
+    
+    def _analyze_question_tone(self, query_lower: str) -> str:
+        """Analyze the tone and complexity of the question"""
+        
+        # Direct/simple questions
+        if (query_lower.startswith(('what is', 'how much', 'when')) and 
+            len(query_lower.split()) <= 5):
+            return 'direct'
+        
+        # Complex/contextual questions
+        elif any(phrase in query_lower for phrase in [
+            'under what circumstances', 'in what cases', 'how does',
+            'why is', 'what happens if', 'what are the conditions'
+        ]):
+            return 'complex'
+        
+        # Yes/no questions
+        elif (query_lower.startswith(('is', 'are', 'does', 'can', 'will')) or
+              'yes or no' in query_lower):
+            return 'binary'
+        
+        return 'neutral'
     
     def _extract_entities(self, query: str) -> List[str]:
         entities = []
