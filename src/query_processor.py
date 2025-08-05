@@ -30,16 +30,8 @@ class QueryProcessor:
             query_embedding = await self.embedding_engine.generate_query_embedding(query)
             logging.info(f"Generated query embedding. Type: {type(query_embedding)}")
             
-            relevant_chunks = await self.vector_store.search_with_threshold(
-                query_embedding, 
-                threshold=0.3, 
-                k=10
-            )
-            logging.info(f"Found {len(relevant_chunks)} relevant chunks with threshold.")
-            
-            if not relevant_chunks:
-                relevant_chunks = await self.vector_store.search(query_embedding, k=5)
-                logging.info(f"Found {len(relevant_chunks)} relevant chunks without threshold.")
+            relevant_chunks = await self.vector_store.search(query_embedding, k=15)
+            logging.info(f"Found {len(relevant_chunks)} relevant chunks.")
             
             enhanced_chunks = self._enhance_with_keywords(query, relevant_chunks)
             logging.info("Enhanced chunks with keywords.")

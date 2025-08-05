@@ -24,17 +24,18 @@ async def test_components():
         print(f"   ✓ Extracted {len(chunks)} chunks")
         
         print("2. Testing embedding generation...")
-        embeddings = embedding_engine.generate_embeddings(chunks[:5])
+        embeddings = await embedding_engine.generate_embeddings(chunks[:5])
         print(f"   ✓ Generated embeddings shape: {embeddings.shape}")
         
         print("3. Testing vector store...")
-        vector_store.add_documents(chunks[:5], embeddings)
-        print(f"   ✓ Added {vector_store.get_document_count()} documents to vector store")
+        await vector_store.add_documents(chunks[:5], embeddings)
+        document_count = await vector_store.get_document_count()
+        print(f"   ✓ Added {document_count} documents to vector store")
         
         print("4. Testing query processing...")
         test_query = "What is the grace period for premium payment?"
-        query_embedding = embedding_engine.generate_query_embedding(test_query)
-        results = vector_store.search(query_embedding, k=3)
+        query_embedding = await embedding_engine.generate_query_embedding(test_query)
+        results = await vector_store.search(query_embedding, k=3)
         print(f"   ✓ Found {len(results)} relevant chunks")
         
         print("All component tests passed!")

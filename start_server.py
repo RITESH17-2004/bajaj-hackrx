@@ -137,29 +137,31 @@ async def test_endpoint():
             documents="https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
             questions=["What is the grace period for premium payment?"]
         )
-        
-        await vector_store.clear()
-        document_chunks = await doc_processor.process_document(request.documents)
-        embeddings = await embedding_engine.generate_embeddings(document_chunks)
-        await vector_store.add_documents(document_chunks, embeddings)
-        
-        answer = await query_processor.process_query(
+
+        # Use app.state components
+        await app.state.vector_store.clear()
+        document_chunks = await app.state.doc_processor.process_document(request.documents)
+        embeddings = await app.state.embedding_engine.generate_embeddings(document_chunks)
+        await app.state.vector_store.add_documents(document_chunks, embeddings)
+
+        answer = await app.state.query_processor.process_query(
             request.questions[0], 
             document_chunks,
-            decision_engine
+            app.state.decision_engine
         )
-        
+
         test_end_time = time.time()
         test_time = round((test_end_time - test_start_time) * 1000, 2)
         logging.info(f"Test endpoint completed in {test_time}ms")
-        
+
         return {"status": "success", "answer": answer, "test_time_ms": test_time}
-        
+
     except Exception as e:
         test_end_time = time.time()
         test_time = round((test_end_time - test_start_time) * 1000, 2)
         logging.error(f"Test endpoint failed: {str(e)} (Test time: {test_time}ms)")
         return {"status": "error", "message": str(e), "test_time_ms": test_time}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

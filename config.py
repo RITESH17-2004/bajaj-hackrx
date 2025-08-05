@@ -7,7 +7,7 @@ class Config:
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')  # Set to INFO for more verbose logging
     MAX_WORKERS: int = int(os.getenv('MAX_WORKERS', '2'))  # Optimize for Railway
     
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "paraphrase-MiniLM-L3-v2"
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
     SIMILARITY_THRESHOLD: float = 0.25
