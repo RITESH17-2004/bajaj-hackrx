@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple
 import asyncio
 import functools
 from concurrent.futures import ThreadPoolExecutor
+from src.text_util import clean_escape_characters
 
 class SimpleAnswerEngine:
     """
@@ -81,7 +82,7 @@ class SimpleAnswerEngine:
             best_answer = self._generate_general_answer(query, relevant_chunks, query_intent)
         
         # Clean escape characters from the final answer
-        return self._clean_escape_characters(best_answer)
+        return clean_escape_characters(best_answer)
     
     def _handle_mathematical_content(self, query: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         """Handle mathematical questions by reporting exact content from source"""
@@ -171,29 +172,6 @@ class SimpleAnswerEngine:
         
         # Default: return the most relevant chunk with some context
         return f"Based on the policy information: {best_chunk[:250]}..."
-    
-    def _clean_escape_characters(self, text: str) -> str:
-        """Remove ALL unwanted backslash escape characters comprehensively"""
-        import re
-        
-        # Handle specific escape sequences first
-        text = text.replace('\\"', '"')    # \" -> "
-        text = text.replace("\\'", "'")    # \' -> '
-        text = text.replace('\\\\', '\\')  # \\ -> \
-        text = text.replace('\\n', ' ')    # \n -> space
-        text = text.replace('\\t', ' ')    # \t -> space  
-        text = text.replace('\\r', '')     # \r -> nothing
-        
-        # Remove any remaining backslash followed by non-whitespace character
-        text = re.sub(r'\\([^\s])', r'\1', text)
-        
-        # Remove any standalone backslashes that aren't part of valid content
-        text = re.sub(r'\\(?=\s|$)', ' ', text)
-        
-        # Clean up multiple spaces created by replacements
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text.strip()
 
     def extract_reasoning(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> Dict:
         return {

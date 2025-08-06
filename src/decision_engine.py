@@ -8,6 +8,7 @@ import functools
 import time
 from concurrent.futures import ThreadPoolExecutor
 import logging
+from src.text_util import clean_escape_characters
 
 # Load environment variables
 load_dotenv()
@@ -123,7 +124,7 @@ class DecisionEngine:
             answers = []
             for query in queries:
                 relevant_chunks = relevant_chunks_map.get(query, [])
-                answer = await self.generate_answer(query, relevant_chunks, {})
+                answer = await self.generate_answer(query, relevant_chunks, {{}})
                 answers.append(answer)
             return answers
 
@@ -208,42 +209,58 @@ class DecisionEngine:
     def _get_system_prompt(self) -> str:
         return """You are a context-aware AI assistant providing precise answers based strictly on provided source material (documents, images, Excel sheets, PDFs, etc.).
 
+
+
 CORE PRINCIPLES:
 • Report source content exactly as shown, regardless of apparent correctness
-• Adapt response style based on content type and question complexity  
+• Adapt response style based on content type and question complexity
 • Never add external knowledge, calculations, or assumptions
 • Only answer what is explicitly present in source materials
 
+
 SOURCE CONTENT FIDELITY:
-• Mathematical operations: Report results exactly as shown (e.g., if source shows "9+5=22", answer "22")
+• Mathematical operations: Report results exactly as shown (e.g., if source shows “9+5=22”, answer “22”)
 • Text content: Transcribe exactly as displayed, including apparent errors
 • Data values: Use specific amounts, dates, percentages from source, not standard values
 • Source content takes precedence over mathematical/factual accuracy
+• Data extraction: Report values directly without citing their structural location (cells, rows, tables)
+
+
 
 STRICT SOURCE MATCHING:
 • Only answer questions about content EXPLICITLY written/shown in source
-• Never perform calculations, inferences, or logical deductions beyond what's written
-• If source shows "3+5=8" but asked about "5+500", respond "No relevant information found"
+• Never perform calculations, inferences, or logical deductions beyond what’s written
+• If source shows “3+5=8” but asked about “5+500”, respond “No relevant information found”
 • Question content must have direct match in source to provide answer
+
 
 CONTEXT-AWARE RESPONSE ADAPTATION:
 The user prompt will specify the appropriate response approach based on content analysis. Follow the provided instruction and template precisely while maintaining these standards:
-
 • Word target: 35-45 words maximum for natural flow
 • Professional tone: Sound knowledgeable but conversational
 • Complete responses: Always end with proper punctuation
 • Prioritize: Direct answers, timeframes, amounts, key conditions from source
 
+
 CONTENT PRIORITIZATION:
 • Essential: Direct answer, exact values, primary requirements from source
-• Include if space: Key limitations, specific conditions  
+• Include if space: Key limitations, specific conditions
 • Eliminate: Secondary details, background context, redundant information
 
+
 MISSING INFORMATION HANDLING:
-If any part cannot be answered from provided content, state this information is not present in the provided materials. Never search for or provide external information.
+Never search for or provide external information, and never reference the structural location of data within documents. And give answer in the context to that question that the information cannot be found in the provided document.
+
+
+CRITICAL OUTPUT RULES:
+- NEVER mention cell locations, row numbers, column names, or sheet names when extracting from Excel
+- NEVER mention table positions, sections, or data locations when extracting from tables  
+- Provide ONLY the direct answer without referencing source location
+- Focus solely on the data value or information requested
+
 
 QUALITY STANDARDS:
-• Natural, professional writing - not robotic or choppy
+• Natural, professional writing – not robotic or choppy
 • Focus on one key point per answer
 • Accuracy to source content over general correctness
 • Adapt response complexity to match question tone and content type"""
@@ -326,16 +343,10 @@ Question: {query}
         
         # Data queries with specific tone adaptation
         if content_type == 'data' or query_content_type == 'data':
-            if question_tone == 'direct':
-                return {
-                    'instruction': 'Provide the specific data value requested with minimal context.',
-                    'template': 'Answer: State the exact amount, percentage, or value from the source.'
-                }
-            else:
-                return {
-                    'instruction': 'Provide the data value with relevant context from the source material.',
-                    'template': 'Answer: Include the specific value plus essential context from the source.'
-                }
+            return {
+                'instruction': 'Provide the specific data value requested in a complete, natural-sounding sentence.',
+                'template': 'Answer: [Your answer in a full sentence]'
+            }
         
         # Policy content with question tone adaptation
         if content_type == 'policy' or intent_type in ['coverage', 'timing', 'information']:
@@ -393,7 +404,7 @@ Question: {query}
 
             # Clean and enhance chunk text for better LLM processing
             enhanced_chunk = self._enhance_chunk_for_context(chunk_text)
-            context_parts.append(f"Policy Section: {enhanced_chunk}")
+            context_parts.append(f"{enhanced_chunk}")
             total_length += chunk_length
 
         return "\n\n".join(context_parts)
@@ -403,47 +414,13 @@ Question: {query}
         import re
 
         # Clean escape characters first
-        chunk_text = self._clean_escape_characters(chunk_text)
+        chunk_text = clean_escape_characters(chunk_text)
         
         # Remove extra whitespace and clean formatting
         chunk_text = re.sub(r'\s+', ' ', chunk_text)
         chunk_text = chunk_text.strip()
 
         return chunk_text
-
-    def _clean_escape_characters(self, text: str) -> str:
-        """Remove ALL unwanted backslash escape characters comprehensively"""
-        import re
-        import unicodedata
-        
-        # Normalize Unicode characters first
-        text = unicodedata.normalize('NFKD', text)
-        
-        # Handle specific escape sequences first
-        text = text.replace('\\"', '"')    # \" -> "
-        text = text.replace("\\'", "'")    # \' -> '
-        text = text.replace('\\\\', '\\')  # \\ -> \ (but we'll clean this later)
-        text = text.replace('\\n', ' ')    # \n -> space
-        text = text.replace('\\t', ' ')    # \t -> space  
-        text = text.replace('\\r', '')     # \r -> nothing
-        text = text.replace('\\f', ' ')    # \f -> space
-        text = text.replace('\\b', ' ')    # \b -> space
-        text = text.replace('\\v', ' ')    # \v -> space
-        
-        # Remove any remaining backslash followed by non-whitespace character
-        text = re.sub(r'\\([^\s\\])', r'\1', text)
-        
-        # Remove any standalone backslashes (including double backslashes converted above)
-        text = re.sub(r'\\+', ' ', text)
-        
-        # Normalize quotes - convert curly quotes to straight quotes
-        text = text.replace('"', '"').replace('"', '"')  # Smart quotes to regular
-        text = text.replace(''', "'").replace(''', "'")  # Smart single quotes to regular
-        
-        # Clean up multiple spaces created by replacements
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text.strip()
 
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         answer = answer.strip()
@@ -452,10 +429,13 @@ Question: {query}
             return self._generate_fallback_answer("", relevant_chunks)
 
         # Clean escape characters
-        answer = self._clean_escape_characters(answer)
+        answer = clean_escape_characters(answer)
 
         # Clean up spacing
         answer = re.sub(r'\s+', ' ', answer)
+
+        # Replace double quotes with single quotes to avoid JSON escaping
+        answer = answer.replace('"', "'")
 
         # Validate and enhance answer completeness
         # answer = self._validate_and_enhance_answer(answer, relevant_chunks)

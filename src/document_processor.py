@@ -14,6 +14,8 @@ import asyncio
 import pandas as pd
 import pytesseract
 from PIL import Image
+from src.text_util import clean_escape_characters
+
 pytesseract.pytesseract.tesseract_cmd = r'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
 class DocumentProcessor:
@@ -66,7 +68,7 @@ class DocumentProcessor:
         logging.info("[DocumentProcessor] Finished parsing document")
         logging.info("[DocumentProcessor] Started text cleaning and chunking")
         # Clean escape characters from extracted text
-        text = self._clean_escape_characters(text)
+        text = clean_escape_characters(text)
         chunks = self._create_chunks(text)
         logging.info(f"[DocumentProcessor] Finished chunking. Total chunks created: {len(chunks)}")
 
@@ -134,7 +136,7 @@ class DocumentProcessor:
     def _extract_excel_text(self, excel_bytes: BytesIO) -> str:
         try:
             df = pd.read_excel(excel_bytes, engine='openpyxl')
-            return df.to_string()
+            return df.to_string(index=False, header=False)
         except Exception as e:
             raise Exception(f"Error extracting Excel text: {str(e)}")
 
@@ -189,44 +191,9 @@ class DocumentProcessor:
 
         return chunks
 
-    def _clean_escape_characters(self, text: str) -> str:
-        """Remove ALL unwanted backslash escape characters comprehensively"""
-        import re
-        import unicodedata
-        
-        # Normalize Unicode characters first
-        text = unicodedata.normalize('NFKD', text)
-        
-        # Handle specific escape sequences first
-        text = text.replace('\\"', '"')    # \" -> "
-        text = text.replace("\\'", "'")    # \' -> '
-        text = text.replace('\\\\', '\\')  # \\ -> \ (but we'll clean this later)
-        text = text.replace('\\n', ' ')    # \n -> space
-        text = text.replace('\\t', ' ')    # \t -> space  
-        text = text.replace('\\r', '')     # \r -> nothing
-        text = text.replace('\\f', ' ')    # \f -> space
-        text = text.replace('\\b', ' ')    # \b -> space
-        text = text.replace('\\v', ' ')    # \v -> space
-        
-        # Remove any remaining backslash followed by non-whitespace character
-        # This catches other escape sequences like \u0000, \x00, etc.
-        text = re.sub(r'\\([^\s\\])', r'\1', text)
-        
-        # Remove any standalone backslashes (including double backslashes converted above)
-        text = re.sub(r'\\+', ' ', text)
-        
-        # Normalize quotes - convert curly quotes to straight quotes
-        text = text.replace('"', '"').replace('"', '"')  # Smart quotes to regular
-        text = text.replace(''', "'").replace(''', "'")  # Smart single quotes to regular
-        
-        # Clean up multiple spaces created by replacements
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text.strip()
-
     def preprocess_text(self, text: str) -> str:
         # Clean escape characters first
-        text = self._clean_escape_characters(text)
+        text = clean_escape_characters(text)
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'[^\w\s\.\,\;\:\!\?\-\(\)]', '', text)
         return text.strip()

@@ -5,6 +5,7 @@ import re
 import asyncio
 import functools
 import logging
+from src.text_util import clean_escape_characters
 
 class FreeLLMEngine:
     def __init__(self, device: str = "cpu"):
@@ -137,29 +138,6 @@ class FreeLLMEngine:
         # Default response with best matching chunk
         return f"Based on the policy information: {best_chunk[:200]}..."
 
-    def _clean_escape_characters(self, text: str) -> str:
-        """Remove ALL unwanted backslash escape characters comprehensively"""
-        import re
-        
-        # Handle specific escape sequences first
-        text = text.replace('\\"', '"')    # \" -> "
-        text = text.replace("\\'", "'")    # \' -> '
-        text = text.replace('\\\\', '\\')  # \\ -> \
-        text = text.replace('\\n', ' ')    # \n -> space
-        text = text.replace('\\t', ' ')    # \t -> space  
-        text = text.replace('\\r', '')     # \r -> nothing
-        
-        # Remove any remaining backslash followed by non-whitespace character
-        text = re.sub(r'\\([^\s])', r'\1', text)
-        
-        # Remove any standalone backslashes that aren't part of valid content
-        text = re.sub(r'\\(?=\s|$)', ' ', text)
-        
-        # Clean up multiple spaces created by replacements
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text.strip()
-
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
         answer = answer.strip()
 
@@ -167,7 +145,7 @@ class FreeLLMEngine:
             return self._generate_fallback_answer("", relevant_chunks)
 
         # Clean escape characters
-        answer = self._clean_escape_characters(answer)
+        answer = clean_escape_characters(answer)
 
         # Clean up the answer
         answer = re.sub(r'\s+', ' ', answer)
