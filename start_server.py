@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -74,6 +75,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+security = HTTPBearer()
+
 class QueryRequest(BaseModel):
     documents: str
     questions: List[str]
@@ -92,7 +95,16 @@ class QueryResponse(BaseModel):
 
 
 @app.post("/hackrx/run", response_model=QueryResponse)
-async def run_query(request: QueryRequest):
+async def run_query(request: QueryRequest, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authorization header is missing")
+
+    if credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization type")
+
+    if credentials.credentials != Config.BEARER_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid bearer token")
+    
     request_start_time = time.time()
     try:
         # Log the request asynchronously (fire and forget)

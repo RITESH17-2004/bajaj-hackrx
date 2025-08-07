@@ -40,8 +40,8 @@ class QueryProcessor:
             logging.info(f"Extracted query intent: {query_intent}")
 
             logging.info("Context being sent to Decision Engine:")
-            for chunk, score in enhanced_chunks:
-                logging.info(f"  Score: {score}, Chunk: {chunk['text']}")
+            # for chunk, score in enhanced_chunks:
+            #     logging.info(f"  Score: {score}, Chunk: {chunk['text']}")
             
             answer = await decision_engine.generate_answer(
                 query, 

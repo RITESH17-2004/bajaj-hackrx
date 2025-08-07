@@ -153,9 +153,6 @@ class DocumentProcessor:
         try:
             image = Image.open(image_bytes)
             text = pytesseract.image_to_string(image)
-            print("--- OCR Text ---")
-            print(text)
-            print("------------------")
             return text
         except Exception as e:
             raise Exception(f"Error extracting image text: {str(e)}")

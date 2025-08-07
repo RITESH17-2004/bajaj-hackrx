@@ -115,7 +115,6 @@ class DecisionEngine:
                             )
                         )
                         answer = response.choices[0].message.content.strip()
-                        logging.info(f"Raw answer from LLM (on retry): {answer}")
                         return self._post_process_answer(answer, relevant_chunks)
                     except Exception as retry_e:
                         logging.error(f"Retry failed: {retry_e}")
@@ -414,7 +413,7 @@ Question: {query}
         return chunk_text
 
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
-        logging.info(f"Post-processing answer: {answer}")
+        # logging.info(f"Post-processing answer: {answer}")
         answer = answer.strip()
 
         # if not answer or answer.lower().startswith("i don't know") or "not found" in answer.lower():
