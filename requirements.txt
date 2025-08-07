@@ -20,3 +20,7 @@ pandas
 openpyxl
 pytesseract
 Pillow
+python-pptx
+oletools
+PyMuPDF
+langchain-text-splitters

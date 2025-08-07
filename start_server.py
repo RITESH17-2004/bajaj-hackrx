@@ -15,6 +15,7 @@ from src.vector_store import VectorStore
 from src.query_processor import QueryProcessor
 from src.decision_engine import DecisionEngine
 from src.request_logger import RequestLogger
+from src.file_validator import FileValidator, ValidationStatus
 from config import Config
 
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI):
     app.state.query_processor = QueryProcessor(app.state.embedding_engine, app.state.vector_store)
     app.state.decision_engine = DecisionEngine(device=app.state.device, executor=app.state.executor)
     app.state.request_logger = RequestLogger()
+    app.state.file_validator = FileValidator()
 
     yield
     logging.info("Shutting down ThreadPoolExecutor...")
@@ -98,7 +100,17 @@ async def run_query(request: QueryRequest):
             document_url=request.documents,
             questions=request.questions
         ))
+
+        validation_status, message = await app.state.file_validator.validate_url(request.documents)
+
+        if validation_status == ValidationStatus.UNSAFE:
+            # Return a single answer for all questions, as the document is unsafe.
+            return QueryResponse(answers=[message for _ in request.questions])
         
+        if validation_status == ValidationStatus.ZIP_ARCHIVE:
+            # Return a single answer with the contents of the zip file
+            return QueryResponse(answers=[message for _ in request.questions])
+
         logging.info(f"Processing document: {request.documents}")
         logging.info(f"Number of questions: {len(request.questions)}")
         

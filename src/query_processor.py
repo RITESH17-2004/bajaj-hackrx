@@ -38,6 +38,10 @@ class QueryProcessor:
             
             query_intent = self._extract_query_intent(query)
             logging.info(f"Extracted query intent: {query_intent}")
+
+            logging.info("Context being sent to Decision Engine:")
+            for chunk, score in enhanced_chunks:
+                logging.info(f"  Score: {score}, Chunk: {chunk['text']}")
             
             answer = await decision_engine.generate_answer(
                 query, 
@@ -66,11 +70,7 @@ class QueryProcessor:
         intent['content_type'] = self._detect_content_type(query_lower)
         intent['question_tone'] = self._analyze_question_tone(query_lower)
         
-        for category, keywords in self.insurance_keywords.items():
-            for keyword in keywords:
-                if keyword in query_lower:
-                    intent['keywords'].append(category)
-                    break
+        
         
         # Enhanced intent type classification
         if intent['content_type'] == 'mathematical':
@@ -163,8 +163,8 @@ class QueryProcessor:
     def _extract_entities(self, query: str) -> List[str]:
         entities = []
         
-        medical_terms = re.findall(r'\b(?:surgery|treatment|therapy|procedure|condition|disease|illness|injury)\b', query.lower())
-        entities.extend(medical_terms)
+        # medical_terms = re.findall(r'\b(?:surgery|treatment|therapy|procedure|condition|disease|illness|injury)\b', query.lower())
+        # entities.extend(medical_terms)
         
         amounts = re.findall(r'\$?\d+(?:,\d{3})*(?:\.\d{2})?', query)
         entities.extend(amounts)
@@ -189,19 +189,3 @@ class QueryProcessor:
         
         enhanced_chunks.sort(key=lambda x: x[1], reverse=True)
         return enhanced_chunks
-    
-    def _calculate_relevance_score(self, query: str, chunk: Dict) -> float:
-        query_lower = query.lower()
-        chunk_text_lower = chunk['text'].lower()
-        
-        exact_matches = sum(1 for word in query.split() if word.lower() in chunk_text_lower)
-        total_query_words = len(query.split())
-        
-        relevance_score = exact_matches / total_query_words if total_query_words > 0 else 0
-        
-        for category, keywords in self.insurance_keywords.items():
-            if any(keyword in query_lower for keyword in keywords):
-                if any(keyword in chunk_text_lower for keyword in keywords):
-                    relevance_score += 0.2
-        
-        return min(relevance_score, 1.0)

@@ -14,6 +14,8 @@ import asyncio
 import pandas as pd
 import pytesseract
 from PIL import Image
+from pptx import Presentation
+import olefile
 from src.text_util import clean_escape_characters
 
 pytesseract.pytesseract.tesseract_cmd = r'C:/Program Files/Tesseract-OCR/tesseract.exe'
@@ -53,6 +55,13 @@ class DocumentProcessor:
             response = await loop.run_in_executor(self.executor, requests.get, document_url)
             response.raise_for_status()
             text = await loop.run_in_executor(self.executor, self._extract_image_text, BytesIO(response.content))
+        elif 'presentation' in (content_type or '') or document_url.lower().endswith(('.pptx', '.ppt')):
+            response = await loop.run_in_executor(self.executor, requests.get, document_url)
+            response.raise_for_status()
+            if document_url.lower().endswith('.pptx'):
+                text = await loop.run_in_executor(self.executor, self._extract_pptx_text, BytesIO(response.content))
+            else:
+                text = await loop.run_in_executor(self.executor, self._extract_ppt_text, BytesIO(response.content))
         else:
             # Run blocking requests call in executor
             response = await loop.run_in_executor(self.executor, requests.get, document_url)
@@ -150,6 +159,68 @@ class DocumentProcessor:
             return text
         except Exception as e:
             raise Exception(f"Error extracting image text: {str(e)}")
+
+    def _extract_pptx_text(self, pptx_bytes: BytesIO) -> str:
+        try:
+            prs = Presentation(pptx_bytes)
+            text = []
+            for slide in prs.slides:
+                # Extract text from shapes
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text.append(shape.text)
+                    if shape.shape_type == 13:  # Picture
+                        try:
+                            image_bytes = BytesIO(shape.image.blob)
+                            text.append(self._extract_image_text(image_bytes))
+                        except Exception as e:
+                            logging.warning(f"Could not extract image from shape: {e}")
+
+                # Check for slide background image
+                if slide.background.fill.type == 6: # Picture fill
+                    try:
+                        image_bytes = BytesIO(slide.background.fill.image.blob)
+                        text.append(self._extract_image_text(image_bytes))
+                    except Exception as e:
+                        logging.warning(f"Could not extract background image: {e}")
+
+            return "\n".join(text)
+        except Exception as e:
+            raise Exception(f"Error extracting PPTX text: {str(e)}")
+
+    def _extract_ppt_text(self, ppt_bytes: BytesIO) -> str:
+        text = ""
+        try:
+            # Try to open as a .pptx file first
+            return self._extract_pptx_text(ppt_bytes)
+        except Exception:
+            # If that fails, handle as a .ppt file
+            ppt_bytes.seek(0)
+            try:
+                ole = olefile.OleFileIO(ppt_bytes)
+                
+                # Extract text from the main PowerPoint Document stream
+                if ole.exists('PowerPoint Document'):
+                    ppt_stream = ole.openstream('PowerPoint Document')
+                    data = ppt_stream.read()
+                    # A simple regex to find long enough ASCII strings
+                    for match in re.finditer(b"[\x20-\x7E]{5,}", data):
+                        text += match.group(0).decode('ascii', errors='ignore') + "\n"
+
+                # Extract images from picture streams and OCR them
+                for stream_name in ole.listdir():
+                    if 'Pictures' in stream_name:
+                        stream = ole.openstream(stream_name)
+                        image_data = stream.read()
+                        try:
+                            # We don't know the image format, so try to open it with PIL
+                            image_bytes = BytesIO(image_data)
+                            text += self._extract_image_text(image_bytes)
+                        except Exception as e:
+                            logging.warning(f"Could not extract image from PPT stream '{stream_name}': {e}")
+                return text
+            except Exception as e:
+                raise Exception(f"Error extracting PPT text: {str(e)}")
 
     def _create_chunks(self, text: str) -> List[Dict]:
         sentences = re.split(r'[.!?]+', text)

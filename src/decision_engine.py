@@ -38,23 +38,24 @@ class DecisionEngine:
         if self.use_mistral:
             self.client = Mistral(api_key=self.mistral_key)
             self.max_context_length = 4000
-            self.temperature = 0.1
-            logging.info("Using Mistral AI for LLM processing")
+            self.temperature = 0.0
+            logging.info("INITIALIZED ENGINE: Mistral AI")
         else:
+            logging.warning("Mistral API key not found or invalid.")
             if FREE_LLM_AVAILABLE:
                 try:
                     self.free_llm = FreeLLMEngine(device=device)
-                    logging.info("Using free Hugging Face models for LLM processing")
+                    logging.info("INITIALIZED ENGINE: Free Hugging Face model")
                 except Exception as e:
                     logging.error(f"Failed to load Hugging Face models: {e}")
                     self.simple_engine = SimpleAnswerEngine()
-                    logging.info("Using simple rule-based engine for LLM processing")
+                    logging.info("INITIALIZED ENGINE: Simple Rule-Based Engine (Fallback 1)")
             else:
                 self.simple_engine = SimpleAnswerEngine()
-                logging.info("Using simple rule-based engine for LLM processing")
+                logging.info("INITIALIZED ENGINE: Simple Rule-Based Engine (Fallback 2)")
 
         self.max_context_length = 4000
-        self.temperature = 0.1
+        self.temperature = 0.0
         self.executor = executor
 
     async def generate_answer(self, query: str, relevant_chunks: List[Tuple[Dict, float]], query_intent: Dict) -> str:
@@ -91,6 +92,7 @@ class DecisionEngine:
             )
 
             answer = response.choices[0].message.content.strip()
+            logging.info(f"Raw answer from LLM: {answer}")
             return self._post_process_answer(answer, relevant_chunks)
 
         except Exception as e:
@@ -113,6 +115,7 @@ class DecisionEngine:
                             )
                         )
                         answer = response.choices[0].message.content.strip()
+                        logging.info(f"Raw answer from LLM (on retry): {answer}")
                         return self._post_process_answer(answer, relevant_chunks)
                     except Exception as retry_e:
                         logging.error(f"Retry failed: {retry_e}")
@@ -207,63 +210,45 @@ class DecisionEngine:
         return answers
 
     def _get_system_prompt(self) -> str:
-        return """You are a context-aware AI assistant providing precise answers based strictly on provided source material (documents, images, Excel sheets, PDFs, etc.).
-
-
+        return """You are a context-aware AI assistant providing precise answers based solely on the provided source material (documents, images, Excel sheets, PDFs, etc.).
 
 CORE PRINCIPLES:
-• Report source content exactly as shown, regardless of apparent correctness
-• Adapt response style based on content type and question complexity
-• Never add external knowledge, calculations, or assumptions
-• Only answer what is explicitly present in source materials
-
+• Answers must be derived directly from the provided source content. Rephrase as needed for clarity and conciseness, but do not introduce new information.
+• Adapt response style based on content type and question complexity.
+• Never add external knowledge, calculations, or assumptions.
+• Understand and interpret closely related terms (e.g., "PED" and "pre-existing diseases") as referring to the same concept if the context supports it.
 
 SOURCE CONTENT FIDELITY:
-• Mathematical operations: Report results exactly as shown (e.g., if source shows “9+5=22”, answer “22”)
-• Text content: Transcribe exactly as displayed, including apparent errors
-• Data values: Use specific amounts, dates, percentages from source, not standard values
-• Source content takes precedence over mathematical/factual accuracy
-• Data extraction: Report values directly without citing their structural location (cells, rows, tables)
+• Mathematical operations: Report results exactly as shown (e.g., if source shows “9+5=22”, answer “22”). Do not perform calculations yourself.
+• Text content: Accurately convey information from the source. Minor rephrasing for readability is allowed, but the meaning must remain identical.
+• Data values: Use specific amounts, dates, percentages from source.
+• Source content takes precedence over general factual accuracy if there's a discrepancy.
 
-
-
-STRICT SOURCE MATCHING:
-• Only answer questions about content EXPLICITLY written/shown in source
-• Never perform calculations, inferences, or logical deductions beyond what’s written
-• If source shows “3+5=8” but asked about “5+500”, respond “No relevant information found”
-• Question content must have direct match in source to provide answer
-
+GROUNDED ANSWERING:
+• Only answer questions that can be reasonably inferred or directly extracted from the provided source.
+• If the source shows “3+5=8” but the question is about “5+500”, respond that the information is not found.
+• If the information is truly not present or cannot be reasonably inferred from the provided context, state that the information is not available in the provided materials. Do not guess or invent answers.
 
 CONTEXT-AWARE RESPONSE ADAPTATION:
 The user prompt will specify the appropriate response approach based on content analysis. Follow the provided instruction and template precisely while maintaining these standards:
-• Word target: 35-45 words maximum for natural flow
-• Professional tone: Sound knowledgeable but conversational
-• Complete responses: Always end with proper punctuation
-• Prioritize: Direct answers, timeframes, amounts, key conditions from source
-
+• Word target: 35-45 words maximum for natural flow.
+• Professional tone: Sound knowledgeable but conversational.
+• Complete responses: Always end with proper punctuation.
+• Prioritize: Direct answers, timeframes, amounts, key conditions from source.
 
 CONTENT PRIORITIZATION:
-• Essential: Direct answer, exact values, primary requirements from source
-• Include if space: Key limitations, specific conditions
-• Eliminate: Secondary details, background context, redundant information
+• Essential: Direct answer, exact values, primary requirements from source.
+• Include if space: Key limitations, specific conditions.
+• Eliminate: Secondary details, background context, redundant information.
 
-
-MISSING INFORMATION HANDLING:
-Never search for or provide external information, and never reference the structural location of data within documents. And give answer in the context to that question that the information cannot be found in the provided document.
-
-
-CRITICAL OUTPUT RULES:
-- NEVER mention cell locations, row numbers, column names, or sheet names when extracting from Excel
-- NEVER mention table positions, sections, or data locations when extracting from tables  
-- Provide ONLY the direct answer without referencing source location
-- Focus solely on the data value or information requested
-
+EXCEL FILE HANDLING:
+If the answer is extracted from an Excel sheet, do not mention the cell, row, column, or sheet location of the source.
 
 QUALITY STANDARDS:
-• Natural, professional writing – not robotic or choppy
-• Focus on one key point per answer
-• Accuracy to source content over general correctness
-• Adapt response complexity to match question tone and content type"""
+• Natural, professional writing – not robotic or choppy.
+• Focus on one key point per answer.
+• Accuracy to source content over general correctness.
+• Adapt response complexity to match question tone and content type."""
 
     def _analyze_source_content_type(self, context: str) -> str:
         """Analyze the type of content in the source material"""
@@ -271,7 +256,7 @@ QUALITY STANDARDS:
         
         # Mathematical content detection
         math_indicators = [
-            r'\d+\s*[\+\-\*\/]\s*\d+\s*=\s*\d+',  # calculations like "5+3=8"
+            r'\d+\s*[\+\-\\/]\s\d+\s*=\s*\d+',  # calculations like "5+3=8"
             r'equals?\s*\d+',
             r'result\s*(?:is|=)\s*\d+',
             r'sum\s*(?:is|=)\s*\d+',
@@ -296,14 +281,14 @@ QUALITY STANDARDS:
             return 'data'
         
         # Policy/insurance content
-        policy_indicators = [
-            'coverage', 'covered', 'policy', 'benefit', 'claim',
-            'deductible', 'premium', 'waiting period', 'grace period',
-            'eligibility', 'terms', 'conditions', 'exclusion'
-        ]
+        # policy_indicators = [
+        #     'coverage', 'covered', 'policy', 'benefit', 'claim',
+        #     'deductible', 'premium', 'waiting period', 'grace period',
+        #     'eligibility', 'terms', 'conditions', 'exclusion'
+        # ]
         
-        if any(indicator in context_lower for indicator in policy_indicators):
-            return 'policy'
+        # if any(indicator in context_lower for indicator in policy_indicators):
+        #     return 'policy'
         
         return 'general'
 
@@ -343,33 +328,39 @@ Question: {query}
         
         # Data queries with specific tone adaptation
         if content_type == 'data' or query_content_type == 'data':
-            return {
-                'instruction': 'Provide the specific data value requested in a complete, natural-sounding sentence.',
-                'template': 'Answer: [Your answer in a full sentence]'
-            }
-        
-        # Policy content with question tone adaptation
-        if content_type == 'policy' or intent_type in ['coverage', 'timing', 'information']:
-            if question_tone == 'binary':
+            if question_tone == 'direct':
                 return {
-                    'instruction': 'Provide a clear yes/no answer with the most important condition.',
-                    'template': 'Answer: Yes/No + key condition or requirement.'
-                }
-            elif question_tone == 'direct':
-                return {
-                    'instruction': 'Give a direct, concise answer with essential details only.',
-                    'template': 'Answer: Direct response with key timeframes or conditions.'
-                }
-            elif question_tone == 'complex':
-                return {
-                    'instruction': 'Provide comprehensive answer addressing the complexity while staying concise.',
-                    'template': 'Answer: Address the main aspects with relevant conditions and limitations.'
+                    'instruction': 'Provide the specific data value requested with minimal context.',
+                    'template': 'Answer: State the exact amount, percentage, or value'
                 }
             else:
                 return {
-                    'instruction': 'Provide professional answer with specific policy details.',
-                    'template': 'Answer: Clear explanation with relevant policy information.'
+                    'instruction': 'Provide the data value with relevant context from the source material.',
+                    'template': 'Answer: Include the specific value'
                 }
+        
+        # Policy content with question tone adaptation
+        # if content_type == 'policy' or intent_type in ['coverage', 'timing', 'information']:
+        #     if question_tone == 'binary':
+        #         return {
+        #             'instruction': 'Provide a clear yes/no answer with the most important condition.',
+        #             'template': 'Answer: Yes/No + key condition or requirement.'
+        #         }
+        #     elif question_tone == 'direct':
+        #         return {
+        #             'instruction': 'Give a direct, concise answer with essential details only.',
+        #             'template': 'Answer: Direct response with key timeframes or conditions.'
+        #         }
+        #     elif question_tone == 'complex':
+        #         return {
+        #             'instruction': 'Provide comprehensive answer addressing the complexity while staying concise.',
+        #             'template': 'Answer: Address the main aspects with relevant conditions and limitations.'
+        #         }
+        #     else:
+        #         return {
+        #             'instruction': 'Provide professional answer with specific policy details.',
+        #             'template': 'Answer: Clear explanation with relevant policy information.'
+        #         }
         
         # General content - adapt to question tone
         if question_tone == 'direct':
@@ -404,7 +395,7 @@ Question: {query}
 
             # Clean and enhance chunk text for better LLM processing
             enhanced_chunk = self._enhance_chunk_for_context(chunk_text)
-            context_parts.append(f"{enhanced_chunk}")
+            context_parts.append(enhanced_chunk)
             total_length += chunk_length
 
         return "\n\n".join(context_parts)
@@ -423,10 +414,11 @@ Question: {query}
         return chunk_text
 
     def _post_process_answer(self, answer: str, relevant_chunks: List[Tuple[Dict, float]]) -> str:
+        logging.info(f"Post-processing answer: {answer}")
         answer = answer.strip()
 
-        if not answer or answer.lower().startswith("i don't know") or "not found" in answer.lower():
-            return self._generate_fallback_answer("", relevant_chunks)
+        # if not answer or answer.lower().startswith("i don't know") or "not found" in answer.lower():
+        #     return self._generate_fallback_answer("", relevant_chunks)
 
         # Clean escape characters
         answer = clean_escape_characters(answer)

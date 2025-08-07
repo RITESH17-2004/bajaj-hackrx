@@ -87,7 +87,7 @@ class FreeLLMEngine:
         for pattern in math_patterns:
             matches = re.findall(pattern, context_lower)
             if matches:
-                return f"According to the source material: {matches[0]}"
+                return f"{matches[0]}"
         
         # If no mathematical expressions found
         return "No mathematical calculations found in the provided source material."
