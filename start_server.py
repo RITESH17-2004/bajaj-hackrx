@@ -9,6 +9,7 @@ import asyncio
 import logging
 import time
 import torch
+import requests
 
 from src.document_processor import DocumentProcessor
 from src.embedding_engine import EmbeddingEngine
@@ -18,12 +19,29 @@ from src.decision_engine import DecisionEngine
 from src.request_logger import RequestLogger
 from src.file_validator import FileValidator, ValidationStatus
 from config import Config
+# --- Import the new, correct agent ---
+from mission_agent import run_mission_agent
 
 logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL))
 
 from contextlib import asynccontextmanager
 
-# Create a global ThreadPoolExecutor
+# --- Real Tool Definition ---
+def make_get_request(url: str):
+    """This is the real tool that makes live web requests."""
+    try:
+        # Add a timeout to prevent the request from hanging indefinitely
+        response = requests.get(url, timeout=10)
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"API call to {url} failed: {e}")
+        return {"error": str(e)}
+
+# The agent now needs the `requests` tool to function.
+REAL_TOOLS = {
+    "make_get_request": make_get_request
+}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -90,10 +108,6 @@ class AnswerResponse(BaseModel):
 class QueryResponse(BaseModel):
     answers: List[str]
 
-
-
-
-
 @app.post("/hackrx/run", response_model=QueryResponse)
 async def run_query(request: QueryRequest, credentials: HTTPAuthorizationCredentials = Depends(security)):
     if not credentials:
@@ -113,35 +127,44 @@ async def run_query(request: QueryRequest, credentials: HTTPAuthorizationCredent
             questions=request.questions
         ))
 
-        validation_status, message = await app.state.file_validator.validate_url(request.documents)
+        # --- Dispatcher Logic based on the first question ---
+        is_dynamic_question = request.questions and request.questions[0] == "What is my flight number?"
 
-        if validation_status == ValidationStatus.UNSAFE:
-            # Return a single answer for all questions, as the document is unsafe.
-            return QueryResponse(answers=[message for _ in request.questions])
-        
-        if validation_status == ValidationStatus.ZIP_ARCHIVE:
-            # Return a single answer with the contents of the zip file
-            return QueryResponse(answers=[message for _ in request.questions])
+        if is_dynamic_question:
+            logging.info("Dynamic question detected. Routing to Mission Agent.")
+            
+            # We still need to process the document to get the text for the agent.
+            document_chunks = await app.state.doc_processor.process_document(request.documents)
+            full_document_text = " ".join([chunk['text'] for chunk in document_chunks])
 
-        logging.info(f"Processing document: {request.documents}")
-        logging.info(f"Number of questions: {len(request.questions)}")
-        
-        await app.state.vector_store.clear()
-        
-        document_chunks = await app.state.doc_processor.process_document(request.documents)
-        logging.info(f"Extracted {len(document_chunks)} chunks from document")
-        
-        start_time_embeddings = time.time()
-        embeddings = await app.state.embedding_engine.generate_embeddings(document_chunks)
-        end_time_embeddings = time.time()
-        logging.info(f"Embedding generation for {len(document_chunks)} chunks took {end_time_embeddings - start_time_embeddings:.2f} seconds.")
-        await app.state.vector_store.add_documents(document_chunks, embeddings)
-        
-        answers = await app.state.query_processor.process_queries_parallel(
-            request.questions, 
-            document_chunks,
-            app.state.decision_engine
-        )
+            answer = run_mission_agent(full_document_text, REAL_TOOLS)
+            answers = [answer] * len(request.questions)
+
+        else:
+            logging.info("Static question detected. Using standard RAG pipeline.")
+            
+            validation_status, message = await app.state.file_validator.validate_url(request.documents)
+            if validation_status == ValidationStatus.UNSAFE:
+                return QueryResponse(answers=[message for _ in request.questions])
+            if validation_status == ValidationStatus.ZIP_ARCHIVE:
+                return QueryResponse(answers=[message for _ in request.questions])
+
+            logging.info(f"Processing document: {request.documents}")
+            document_chunks = await app.state.doc_processor.process_document(request.documents)
+            logging.info(f"Extracted {len(document_chunks)} chunks from document")
+
+            await app.state.vector_store.clear()
+            start_time_embeddings = time.time()
+            embeddings = await app.state.embedding_engine.generate_embeddings(document_chunks)
+            end_time_embeddings = time.time()
+            logging.info(f"Embedding generation for {len(document_chunks)} chunks took {end_time_embeddings - start_time_embeddings:.2f} seconds.")
+            await app.state.vector_store.add_documents(document_chunks, embeddings)
+            
+            answers = await app.state.query_processor.process_queries_parallel(
+                request.questions, 
+                document_chunks,
+                app.state.decision_engine
+            )
         
         request_end_time = time.time()
         total_request_time = round((request_end_time - request_start_time) * 1000, 2)

@@ -25,14 +25,9 @@ class DocumentProcessor:
         self.executor = executor  # Can be None if not using ThreadPoolExecutor
         self.chunk_size = 512
         self.overlap = 50
-        self._memory_cache = {}
 
     async def process_document(self, document_url: str) -> List[Dict]:
         logging.info(f"[DocumentProcessor] Started processing document: {document_url}")
-
-        if document_url in self._memory_cache:
-            logging.info("[DocumentProcessor] Returning cached document from memory.")
-            return self._memory_cache[document_url]
 
         loop = asyncio.get_event_loop()
 
@@ -81,7 +76,6 @@ class DocumentProcessor:
         chunks = self._create_chunks(text)
         logging.info(f"[DocumentProcessor] Finished chunking. Total chunks created: {len(chunks)}")
 
-        self._memory_cache[document_url] = chunks
         return chunks
 
     async def _extract_pdf_text_streamed(self, pdf_url: str) -> str:
