@@ -24,3 +24,5 @@ python-pptx
 oletools
 PyMuPDF
 langchain-text-splitters
+httpx
+demjson

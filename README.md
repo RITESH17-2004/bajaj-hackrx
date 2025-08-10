@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # LLM-Powered Intelligent Query-Retrieval System
 
 An advanced document processing and query answering system designed for insurance, legal, HR, and compliance domains. The system processes PDFs, DOCX, and email documents to provide accurate, contextual answers with explainable reasoning.
@@ -133,7 +132,7 @@ curl -X POST "http://localhost:8000/hackrx/run" \
   -H "Authorization: Bearer 250e6c57e9ef2aa5088d3bf610d72b73959b78486a62e066fd94ef74bc103c73" \
   -H "Content-Type: application/json" \
   -d '{
-    "documents": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "documents": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bplAXvEZogeT%2FjUHNO7HzQ%3D",
     "questions": [
       "What is the grace period for premium payment?",
       "Does this policy cover maternity expenses?"
@@ -235,6 +234,3 @@ This project is developed for the HackRx hackathon and is provided as-is for eva
 - [Sentence Transformers](https://www.sbert.net/)
 - [FAISS Documentation](https://faiss.ai/)
 - [OpenAI API Reference](https://platform.openai.com/docs)
-=======
-# bajaj-finserv
->>>>>>> 44caf1b56870c5b376be14bc04d2942166954374
