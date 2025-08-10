@@ -1,6 +1,6 @@
 import os
 from typing import List, Dict, Tuple
-import json
+
 import re
 from dotenv import load_dotenv
 import asyncio
@@ -53,11 +53,11 @@ class AnswerGenerationEngine:
                     self.free_llm = FreeLLMEngine(device=device)
                     logging.info("AnswerGenerationEngine initialized with Open Source LLM.")
                 except Exception as e:
-                    logging.error(f"Failed to load Hugging Face models: {e}. Falling back to SimpleAnswerEngine.")
-                    self.simple_engine = SimpleAnswerEngine()
+                    logging.error(f"Failed to load Hugging Face models: {e}. Falling back to RuleBasedAnswerEngine.")
+                    self.simple_engine = RuleBasedAnswerEngine()
                     logging.info("AnswerGenerationEngine initialized with Rule-Based Engine (Fallback 1).")
             else:
-                self.simple_engine = SimpleAnswerEngine()
+                self.simple_engine = RuleBasedAnswerEngine()
                 logging.info("AnswerGenerationEngine initialized with Rule-Based Engine (Fallback 2).")
 
         self.max_context_length = 4000  # Maximum token length for context fed to LLM

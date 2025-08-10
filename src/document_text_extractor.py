@@ -1,5 +1,5 @@
 import httpx
-import PyPDF2
+
 import docx
 import email
 import re
