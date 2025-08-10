@@ -77,6 +77,64 @@ A sophisticated document processing and contextual decision-making system that h
         └─────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
+## ⚙️ How It Works
+
+1. **Document Input & Validation**
+   - User uploads a document URL or file via **FastAPI**.
+   - `InputValidator` checks:
+     - File format, size limits, and allowed types.
+     - ZIP bomb protection (≤100MB, ≤1000 files).
+     - URL sanitization and malicious link filtering.
+   - Supported formats: PDF, DOCX, PPTX, XLSX, Images, Emails, ZIP archives.
+
+2. **Content Extraction & Preprocessing**
+   - `DocumentTextExtractor` handles parsing:
+     - **PyMuPDF (fitz)** → PDF  
+     - **python-docx** → Word  
+     - **python-pptx** → PowerPoint  
+     - **pandas/openpyxl** → Excel  
+     - **Tesseract OCR** → Images  
+     - **BeautifulSoup** → Emails/HTML
+   - Smart chunking: Splits into 512-word segments with 50-word overlaps.
+   - Extracted content is cleaned and normalized.
+
+3. **Pipeline Routing**
+   - `PipelineRouter` decides the processing path:
+     - **RAG Pipeline** → Standard structured documents.
+     - **Agent Pipeline** → Complex documents with URLs, APIs, or multi-step reasoning.
+     - **Fallback Processing** → Simple regex/pattern-based extraction.
+
+4. **RAG Pipeline (Standard Docs)**
+   - Embedding generation via **Sentence Transformers** (MiniLM).
+   - GPU acceleration with CUDA or CPU fallback.
+   - Storage & search in **FAISS** vector store (SHA-256 caching).
+   - Hybrid search: Vector similarity + keyword matching.
+   - Query resolution with intent analysis.
+
+5. **Agent Pipeline (Complex Docs)**
+   - Mission analysis with **GPT-Neo-2.7B** and **DistilBERT**.
+   - Tool selection & execution (API calls, parsing, doc search).
+   - Multi-turn reasoning for iterative problem solving.
+
+6. **Multi-Tier LLM Response Generation**
+   - **Primary**: Mistral API (mistral-small-latest) for high-quality responses.
+   - **Fallback 1**: Hugging Face models (DistilBERT for Q&A, GPT-Neo-2.7B for generation).
+   - **Fallback 2**: Rule-based extraction for domain-specific queries.
+   - Post-processing with `tiktoken`, async pipelines, and thread pools.
+
+7. **Security & Logging**
+   - Input sanitization and malicious content blocking.
+   - Bearer token authentication for API access.
+   - Complete request/response audit logging.
+
+8. **Response Delivery**
+   - Final, context-aware answers returned in structured JSON.
+   - Can include direct text answers, extracted data tables, or step-by-step reasoning.
+
+---
+
 ## 🛠️ Tech Stack
 
 ### **Backend Framework**
@@ -287,3 +345,4 @@ The system automatically analyzes document content and routes to appropriate pip
 **🎯 Built for HackRx 6.0 - Production-Ready AI Document Intelligence System**
 
 *Enterprise-grade LLM integration • Multi-format processing • Contextual decision making • Real-world domain expertise*
+
