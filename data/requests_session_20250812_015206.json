@@ -1,0 +1,55 @@
+[
+  {
+    "timestamp": "2025-08-12T01:52:31.547534",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "questions": [
+      "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
+      "What is the waiting period for pre-existing diseases (PED) to be covered?",
+      "Does this policy cover maternity expenses, and what are the conditions?",
+      "What is the waiting period for cataract surgery?",
+      "Are the medical expenses for an organ donor covered under this policy?",
+      "What is the No Claim Discount (NCD) offered in this policy?",
+      "Is there a benefit for preventive health check-ups?",
+      "How does the policy define a 'Hospital'?",
+      "What is the extent of coverage for AYUSH treatments?",
+      "Are there any sub-limits on room rent and ICU charges for Plan A?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T01:52:59.906385",
+    "document_url": "https://hackrx.blob.core.windows.net/hackrx/rounds/FinalRound4SubmissionPDF.pdf?sv=2023-01-03&spr=https&st=2025-08-07T14%3A23%3A48Z&se=2027-08-08T14%3A23%3A00Z&sr=b&sp=r&sig=nMtZ2x9aBvz%2FPjRWboEOZIGB%2FaGfNf5TfBOrhGqSv4M%3D",
+    "questions": [
+      "What is my flight number?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T01:54:22.206090",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/Test%20/Fact%20Check.docx?sv=2023-01-03&spr=https&st=2025-08-04T20%3A27%3A22Z&se=2028-08-05T20%3A27%3A00Z&sr=b&sp=r&sig=XB1%2FNzJ57eg52j4xcZPGMlFrp3HYErCW1t7k1fMyiIc%3D",
+    "questions": [
+      "What is the capital of Australia?",
+      "Where can we find Dinosaurs?",
+      "What are clouds made of?",
+      "How to grow plants faster?",
+      "How many lungs does human body have?",
+      "Who is Sanjeev bajaj?",
+      "What is the name of our galaxy?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T01:58:00.020792",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/hackrx_6/policies/ICIHLIP22012V012223.pdf?sv=2023-01-03&st=2025-07-30T06%3A46%3A49Z&se=2025-09-01T06%3A46%3A00Z&sr=c&sp=rl&sig=9szykRKdGYj0BVm1skP%2BX8N9%2FRENEn2k7MQPUp33jyQ%3D",
+    "questions": [
+      "What is the minimum duration of hospitalization for it to qualify as 'Inpatient care'?",
+      "Define 'Day Care Treatment' as per this policy.",
+      "What is covered under 'Donor Expenses'?",
+      "How is 'voluntary deductible' applied when multiple claims are made?",
+      "What happens if you're hospitalized in a room category above your entitled room rent?",
+      "What\u2019s the difference between 'pre-hospitalization' and 'post-hospitalization' expenses coverage limits?",
+      "Does maternity-related medical termination of pregnancy get covered under the maternity expenses clause?",
+      "Can you claim outpatient (OPD) treatment costs when you\u2019ve opted into the Care Management Plus Program?",
+      "If a treatment is taken in a higher premium zone than the one paid for, how is claim settlement affected?",
+      "What\u2019s your favorite superhero and why?",
+      "If a policyholder cancels the policy after 120 days from the policy start date without making any claim, what percentage of the premium will be refunded, and is there a specific notice period required for the cancellation?"
+    ]
+  }
+]

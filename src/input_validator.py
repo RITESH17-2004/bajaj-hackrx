@@ -25,12 +25,25 @@ class InputValidator:
 
     def is_agent_required(self, document_text: str) -> bool:
         """
-        Checks if the document text contains patterns that suggest an API endpoint URL,
-        indicating that a dynamic agent might be required for processing.
+        Checks if the document text contains API endpoint patterns that require dynamic processing.
         """
-        # Check for the presence of what looks like an API endpoint URL
-        if re.search(r"https?://[^/]+/.+", document_text):
-            return True
+        logging.info("Checking if agent is required...")
+        
+        # Look for specific API endpoint patterns
+        api_patterns = [
+            r"GET https?://",                    # Explicit GET requests
+            r"POST https?://",                   # Explicit POST requests
+            r"https?://[^/]+/api/",              # URLs with /api/ in path
+            r"https?://[^/]+/.+/get\w+",         # URLs with getXXX endpoints
+            r"https?://register\.hackrx\.in/"    # Specific hackrx endpoints
+        ]
+        
+        for pattern in api_patterns:
+            if re.search(pattern, document_text, re.IGNORECASE):
+                logging.info(f"API endpoint pattern found: {pattern}")
+                return True
+        
+        logging.info("No API endpoints found. Document is static.")
         return False
 
     async def validate_url(self, document_url: str) -> Tuple[ValidationStatus, Optional[str]]:

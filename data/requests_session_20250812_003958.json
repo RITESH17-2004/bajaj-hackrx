@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2025-08-12T00:40:08.830745",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "questions": [
+      "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
+      "What is the waiting period for pre-existing diseases (PED) to be covered?",
+      "Does this policy cover maternity expenses, and what are the conditions?",
+      "What is the waiting period for cataract surgery?",
+      "Are the medical expenses for an organ donor covered under this policy?",
+      "What is the No Claim Discount (NCD) offered in this policy?",
+      "Is there a benefit for preventive health check-ups?",
+      "How does the policy define a 'Hospital'?",
+      "What is the extent of coverage for AYUSH treatments?",
+      "Are there any sub-limits on room rent and ICU charges for Plan A?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T00:40:55.998717",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/Test%20/TG_NIAPOLICYCLAUSEDOCTG%201.PDF?sv=2023-01-03&spr=https&st=2025-08-11T16%3A50%3A58Z&se=2026-08-12T16%3A50%3A00Z&sr=b&sp=r&sig=acEgS1n5v7ZJCwjbBzgKGohHSUAkmLAjhvYidNhHeDo%3D",
+    "questions": [
+      "Describe the timeline for claim settlement or rejection, including penalties for delays and the handling of document deficiencies.",
+      "What documents are required for notice of claim, and how does the waiver provision for delayed intimation work?",
+      "What are the conditions and limitations for the optional maternity expenses benefit extension, including waiting periods and exclusions?",
+      "How are claims handled if medical expenses span two policy periods, and what is the company's stance on repudiation?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T00:41:05.421065",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/Test%20/image%20(1).png?sv=2023-01-03&spr=https&st=2025-08-11T16%3A54%3A36Z&se=2026-08-12T16%3A54%3A00Z&sr=b&sp=r&sig=d5zWWItc5pGsRLn8Y4%2Bp5FNndQXfXBGyR22RofrX9Fc%3D",
+    "questions": [
+      "\u0d30\u0d3e\u0d39\u0d41\u0d7d \u0d17\u0d3e\u0d28\u0d4d\u0d27\u0d3f \u0d0f\u0d24\u0d41 \u0d35\u0d3f\u0d37\u0d2f\u0d24\u0d4d\u0d24\u0d3f\u0d7d \u0d1c\u0d28\u0d19\u0d4d\u0d19\u0d33\u0d4b\u0d1f\u0d4d \u0d05\u0d2d\u0d4d\u0d2f\u0d7c\u0d24\u0d4d\u0d25\u0d3f\u0d1a\u0d4d\u0d1a\u0d41?",
+      "\"\u0d35\u0d4b\u0d1f\u0d4d\u0d1f\u0d4d \u0d15\u0d4a\u0d33\u0d4d\u0d33\" \u0d38\u0d02\u0d2c\u0d28\u0d4d\u0d27\u0d3f\u0d1a\u0d4d\u0d1a\u0d4d \u0d28\u0d7d\u0d15\u0d3f\u0d2f\u0d3f\u0d30\u0d3f\u0d15\u0d4d\u0d15\u0d41\u0d28\u0d4d\u0d28 \u0d13\u0d7a\u0d32\u0d48\u0d7b \u0d32\u0d3f\u0d19\u0d4d\u0d15\u0d4d \u0d0f\u0d24\u0d3e\u0d23\u0d4d?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T00:41:14.771168",
+    "document_url": "https://hackrx.blob.core.windows.net/hackrx/rounds/FinalRound4SubmissionPDF.pdf?sv=2023-01-03&spr=https&st=2025-08-07T14%3A23%3A48Z&se=2027-08-08T14%3A23%3A00Z&sr=b&sp=r&sig=nMtZ2x9aBvz%2FPjRWboEOZIGB%2FaGfNf5TfBOrhGqSv4M%3D",
+    "questions": [
+      "What is my flight number?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-12T00:41:46.524562",
+    "document_url": "https://register.hackrx.in/utils/get-secret-token?hackTeam=98769",
+    "questions": [
+      "Go to the link and get the secret token and return it"
+    ]
+  }
+]

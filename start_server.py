@@ -148,28 +148,18 @@ async def run_query(request: QueryRequest, credentials: HTTPAuthorizationCredent
         if is_cached:
             logging.info(f"Cache HIT for document: {doc_url}")
             document_chunks = app.state.vector_store.documents
+            logging.info(f"Extracted text from cache: {full_document_text[:1000]}...") # Log a sample of the cached text
         else:
             logging.info(f"Cache MISS for document: {doc_url}. Processing...")
             # Process document to extract chunks and full text
             document_chunks = [chunk async for chunk in app.state.doc_processor.process_document(doc_url)]
             full_document_text = " ".join([chunk['text'] for chunk in document_chunks])
+            logging.info(f"Extracted text: {full_document_text[:1000]}...") # Log a sample of the extracted text
 
-            # Generate embeddings for document chunks and add to vector store in batches
-            chunk_batch = []
-            batch_size = 32
+            # Generate embeddings for all chunks at once (no batching)
             start_time_embeddings = time.time()
-            
-            for chunk in document_chunks:
-                chunk_batch.append(chunk)
-                if len(chunk_batch) >= batch_size:
-                    embeddings = await app.state.embedding_engine.generate_embeddings(chunk_batch)
-                    await app.state.vector_store.add_documents(chunk_batch, embeddings)
-                    chunk_batch = []
-            
-            if chunk_batch:
-                embeddings = await app.state.embedding_engine.generate_embeddings(chunk_batch)
-                await app.state.vector_store.add_documents(chunk_batch, embeddings)
-
+            embeddings = await app.state.embedding_engine.generate_embeddings(document_chunks)
+            await app.state.vector_store.add_documents(document_chunks, embeddings)
             logging.info(f"Embedding generation for {len(document_chunks)} chunks took {time.time() - start_time_embeddings:.2f} seconds.")
 
             # Save the newly processed index to cache

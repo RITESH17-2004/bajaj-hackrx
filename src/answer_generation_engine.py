@@ -45,6 +45,8 @@ class AnswerGenerationEngine:
 
         if self.use_mistral:
             self.client = Mistral(api_key=self.mistral_key)
+            self.max_context_length = 4000
+            self.temperature = 0.0
             logging.info("AnswerGenerationEngine initialized with Mistral AI.")
         else:
             logging.warning("Mistral API key not found or invalid. Attempting fallback LLM.")
@@ -106,6 +108,7 @@ class AnswerGenerationEngine:
             )
 
             answer = response.choices[0].message.content.strip()
+            logging.info(f"Raw answer from Mistral LLM: {answer}")
             logging.info("Raw answer from Mistral LLM received.")
             return self._post_process_answer(answer, relevant_chunks)
 
@@ -337,7 +340,7 @@ Source Material:
 
 Question: {query}
 
-{response_guidance['template']} """
+{response_guidance['template']}"""
 
         return prompt
 
@@ -389,21 +392,23 @@ Question: {query}
         """
         Prepares the context string from relevant document chunks for the LLM.
         Limits the context length to avoid exceeding model token limits.
+        It now prioritizes shorter, high-scoring chunks to create a more diverse context.
         """
         context_parts = []
         total_length = 0
-
-        # Set a dynamic context limit for detailed answers
         max_context_for_detailed_answers = min(self.max_context_length, 3000)
 
-        for chunk, score in relevant_chunks:
+        # Sort chunks by a combination of score (desc) and length (asc)
+        # This gives priority to shorter, highly relevant chunks
+        sorted_chunks = sorted(relevant_chunks, key=lambda x: (-x[1], len(x[0]['text'])))
+
+        for chunk, score in sorted_chunks:
             chunk_text = chunk['text']
             chunk_length = len(chunk_text.split())
 
             if total_length + chunk_length > max_context_for_detailed_answers:
-                break
+                continue # Skip chunks that would exceed the context limit
 
-            # Clean and enhance chunk text for better LLM processing
             enhanced_chunk = self._enhance_chunk_for_context(chunk_text)
             context_parts.append(enhanced_chunk)
             total_length += chunk_length
@@ -439,35 +444,6 @@ Question: {query}
         # Replace double quotes with single quotes to avoid JSON escaping issues
         answer = answer.replace('"', "'")
 
-        # Function to fix broken URLs, specifically for 'register.hackrx.in'
-        def _fix_urls(text: str) -> str:
-            # Pattern 1: Fix "register hackrx in" to "register.hackrx.in"
-            text = re.sub(
-                r'register[\s\W_]*hackrx[\s\W_]*in\b',
-                'register.hackrx.in',
-                text,
-                flags=re.IGNORECASE
-            )
-            
-            # Pattern 2: Ensure proper https:// prefix if missing
-            text = re.sub(
-                r'\b(?<!https://)(?<!http://)register\.hackrx\.in',
-                'https://register.hackrx.in',
-                text
-            )
-            
-            # Pattern 3: Fix any remaining malformed URLs with protocol
-            text = re.sub(
-                r'(https?://)\s*register[\s\W_]*hackrx[\s\W_]*in\b',
-                r'\1register.hackrx.in',
-                text,
-                flags=re.IGNORECASE
-            )
-            
-            return text
-
-        answer = _fix_urls(answer)   
-        
         # Ensure the answer ends with a period for consistency
         if not answer.endswith('.'):
             answer += '.'
@@ -603,7 +579,7 @@ Question: {query}
             'clause'
         ]
 
-        confidence_boost = sum(0.1 for indicator in answer.lower() if indicator in answer_indicators)
+        confidence_boost = sum(0.1 for indicator in answer_indicators if indicator in answer.lower())
 
         base_confidence = min(avg_relevance, 0.8)
         final_confidence = min(base_confidence + confidence_boost, 0.95)

@@ -1,5 +1,5 @@
 import httpx
-
+import PyPDF2
 import docx
 import email
 import re
@@ -32,7 +32,7 @@ class DocumentTextExtractor:
         self.overlap = 50      # Number of words to overlap between consecutive chunks
         self.client = httpx.AsyncClient(http2=True, follow_redirects=True) # Async HTTP client
 
-    async def process_document(self, document_url: str) -> AsyncGenerator[Dict, None]:
+    async def process_document(self, document_url: str, lang: str = 'eng') -> AsyncGenerator[Dict, None]:
         """
         Asynchronously processes a document from a given URL.
         Determines document type, extracts text, cleans it, and yields text chunks.
@@ -53,7 +53,7 @@ class DocumentTextExtractor:
         text = ""
         # Determine document type based on content-type or file extension and extract text
         if 'pdf' in (content_type or '') or document_url.lower().endswith('.pdf'):
-            text = await self._extract_pdf_text_streamed(document_url)
+            text = await self._extract_pdf_text_streamed(document_url, lang=lang)
         elif 'spreadsheet' in (content_type or '') or 'excel' in (content_type or '') or document_url.lower().endswith(('.xlsx', '.xls')):
             response = await self.client.get(document_url)
             response.raise_for_status()
@@ -61,14 +61,14 @@ class DocumentTextExtractor:
         elif 'image' in (content_type or '') or document_url.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp')):
             response = await self.client.get(document_url)
             response.raise_for_status()
-            text = await loop.run_in_executor(self.executor, self._extract_image_text, BytesIO(response.content))
+            text = await loop.run_in_executor(self.executor, self._extract_image_text, BytesIO(response.content), lang)
         elif 'presentation' in (content_type or '') or document_url.lower().endswith(('.pptx', '.ppt')):
             response = await self.client.get(document_url)
             response.raise_for_status()
             if document_url.lower().endswith('.pptx'):
-                text = await loop.run_in_executor(self.executor, self._extract_pptx_text, BytesIO(response.content))
+                text = await loop.run_in_executor(self.executor, self._extract_pptx_text, BytesIO(response.content), lang)
             else:
-                text = await loop.run_in_executor(self.executor, self._extract_ppt_text, BytesIO(response.content))
+                text = await loop.run_in_executor(self.executor, self._extract_ppt_text, BytesIO(response.content), lang)
         else:
             # Default to general text extraction if type is not specifically handled
             response = await self.client.get(document_url)
@@ -87,13 +87,13 @@ class DocumentTextExtractor:
         for chunk in self._create_chunks_generator(text):
             yield chunk
 
-    async def _extract_pdf_text_streamed(self, pdf_url: str) -> str:
+    async def _extract_pdf_text_streamed(self, pdf_url: str, lang: str = 'eng') -> str:
         """
         Streams a PDF from a URL, saves it temporarily, extracts text using fitz,
         and then deletes the temporary file.
         """
         logging.info("Streaming and temporarily saving PDF.")
-        
+
         async def async_download_and_parse():
             with NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
                 async with self.client.stream("GET", pdf_url) as r:
@@ -109,9 +109,38 @@ class DocumentTextExtractor:
                 # Run PDF parsing in a separate thread to avoid blocking the event loop
                 def parse_pdf():
                     nonlocal text
-                    with fitz.open(temp_path) as doc:
-                        for page in doc:
-                            text += page.get_text()
+                    try:
+                        with fitz.open(temp_path) as doc:
+                            for page in doc:
+                                text += page.get_text()
+                        # If fitz extracts very little text, it might be a scanned PDF.
+                        # In that case, try OCR.
+                        if len(text.strip()) < 100: # Threshold to decide if OCR is needed
+                            logging.info("Fitz extracted little text, trying OCR.")
+                            text = "" # Reset text to be filled by OCR
+                            with fitz.open(temp_path) as doc:
+                                for page_num in range(len(doc)):
+                                    page = doc.load_page(page_num)
+                                    pix = page.get_pixmap()
+                                    img_bytes = pix.tobytes("ppm")
+                                    img = Image.open(BytesIO(img_bytes))
+                                    text += pytesseract.image_to_string(img, lang=lang)
+                    except Exception as e:
+                        logging.error(f"Error parsing PDF with fitz, trying OCR as fallback: {e}")
+                        # Fallback to OCR if fitz fails for any reason
+                        text = "" # Reset text
+                        try:
+                            with fitz.open(temp_path) as doc:
+                                for page_num in range(len(doc)):
+                                    page = doc.load_page(page_num)
+                                    pix = page.get_pixmap()
+                                    img_bytes = pix.tobytes("ppm")
+                                    img = Image.open(BytesIO(img_bytes))
+                                    text += pytesseract.image_to_string(img, lang=lang)
+                        except Exception as ocr_e:
+                            logging.error(f"OCR fallback also failed: {ocr_e}")
+
+
                 await loop.run_in_executor(self.executor, parse_pdf)
             finally:
                 # Ensure temporary file is deleted
@@ -172,18 +201,18 @@ class DocumentTextExtractor:
         except Exception as e:
             raise Exception(f"Error extracting Excel text: {str(e)}")
 
-    def _extract_image_text(self, image_bytes: BytesIO) -> str:
+    def _extract_image_text(self, image_bytes: BytesIO, lang: str = 'eng') -> str:
         """
         Extracts text from an image file using Tesseract OCR.
         """
         try:
             image = Image.open(image_bytes)
-            text = pytesseract.image_to_string(image)
+            text = pytesseract.image_to_string(image, lang=lang)
             return text
         except Exception as e:
             raise Exception(f"Error extracting image text: {str(e)}")
 
-    def _extract_pptx_text(self, pptx_bytes: BytesIO) -> str:
+    def _extract_pptx_text(self, pptx_bytes: BytesIO, lang: str = 'eng') -> str:
         """
         Extracts text from a PPTX (PowerPoint) file provided as bytes.
         Includes text from slides and attempts to extract text from embedded images.
@@ -198,14 +227,14 @@ class DocumentTextExtractor:
                     if shape.shape_type == 13:  # Picture shape type
                         try:
                             image_bytes = BytesIO(shape.image.blob)
-                            text.append(self._extract_image_text(image_bytes))
+                            text.append(self._extract_image_text(image_bytes, lang=lang))
                         except Exception as e:
                             logging.warning(f"Could not extract image from shape: {e}")
 
                 if slide.background.fill.type == 6: # Picture fill type
                     try:
                         image_bytes = BytesIO(slide.background.fill.image.blob)
-                        text.append(self._extract_image_text(image_bytes))
+                        text.append(self._extract_image_text(image_bytes, lang=lang))
                     except Exception as e:
                         logging.warning(f"Could not extract background image: {e}")
 
@@ -213,7 +242,7 @@ class DocumentTextExtractor:
         except Exception as e:
             raise Exception(f"Error extracting PPTX text: {str(e)}")
 
-    def _extract_ppt_text(self, ppt_bytes: BytesIO) -> str:
+    def _extract_ppt_text(self, ppt_bytes: BytesIO, lang: str = 'eng') -> str:
         """
         Extracts text from an older PPT (PowerPoint) file provided as bytes.
         Attempts to use PPTX extraction first, then falls back to OLE parsing.
@@ -242,7 +271,7 @@ class DocumentTextExtractor:
                         image_data = stream.read()
                         try:
                             image_bytes = BytesIO(image_data)
-                            text += self._extract_image_text(image_bytes)
+                            text += self._extract_image_text(image_bytes, lang=lang)
                         except Exception as e:
                             logging.warning(f"Could not extract image from PPT stream '{stream_name}': {e}")
                 return text

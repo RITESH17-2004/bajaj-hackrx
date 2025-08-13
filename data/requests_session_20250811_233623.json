@@ -1,0 +1,70 @@
+[
+  {
+    "timestamp": "2025-08-11T23:36:26.049342",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "questions": [
+      "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
+      "What is the waiting period for pre-existing diseases (PED) to be covered?",
+      "Does this policy cover maternity expenses, and what are the conditions?",
+      "What is the waiting period for cataract surgery?",
+      "Are the medical expenses for an organ donor covered under this policy?",
+      "What is the No Claim Discount (NCD) offered in this policy?",
+      "Is there a benefit for preventive health check-ups?",
+      "How does the policy define a 'Hospital'?",
+      "What is the extent of coverage for AYUSH treatments?",
+      "Are there any sub-limits on room rent and ICU charges for Plan A?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-11T23:39:01.885208",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/Test%20/Pincode%20data.xlsx?sv=2023-01-03&spr=https&st=2025-08-04T18%3A50%3A43Z&se=2026-08-05T18%3A50%3A00Z&sr=b&sp=r&sig=xf95kP3RtMtkirtUMFZn%2FFNai6sWHarZsTcvx8ka9mI%3D",
+    "questions": [
+      "What is the phone number of Aditya Roy?",
+      "What is the incode of Anjali Shah?",
+      "What is the highest salary earned by a person named Aarav Sharma?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-11T23:39:55.383988",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "questions": [
+      "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
+      "What is the waiting period for pre-existing diseases (PED) to be covered?",
+      "Does this policy cover maternity expenses, and what are the conditions?",
+      "What is the waiting period for cataract surgery?",
+      "Are the medical expenses for an organ donor covered under this policy?",
+      "What is the No Claim Discount (NCD) offered in this policy?",
+      "Is there a benefit for preventive health check-ups?",
+      "How does the policy define a 'Hospital'?",
+      "What is the extent of coverage for AYUSH treatments?",
+      "Are there any sub-limits on room rent and ICU charges for Plan A?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-11T23:43:20.112728",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/Test%20/Test%20Case%20HackRx.pptx?sv=2023-01-03&spr=https&st=2025-08-04T18%3A36%3A56Z&se=2026-08-05T18%3A36%3A00Z&sr=b&sp=r&sig=v3zSJ%2FKW4RhXaNNVTU9KQbX%2Bmo5dDEIzwaBzXCOicJM%3D",
+    "questions": [
+      "What types of hospitalization expenses are covered, and what are the limits for room and room expenses?",
+      "What is domiciliary hospitalization, and what are its key exclusions?",
+      "What are the benefits and limits of telemedicine and maternity coverage under this policy?",
+      "What specialized treatments are covered, and what are their sub-limits?",
+      "What are the waiting periods for pre-existing diseases and specified diseases or procedures?"
+    ]
+  },
+  {
+    "timestamp": "2025-08-11T23:45:04.407825",
+    "document_url": "https://hackrx.blob.core.windows.net/assets/indian_constitution.pdf?sv=2023-01-03&st=2025-07-28T06%3A42%3A00Z&se=2026-11-29T06%3A42%3A00Z&sr=b&sp=r&sig=5Gs%2FOXqP3zY00lgciu4BZjDV5QjTDIx7fgnfdz6Pu24%3D",
+    "questions": [
+      "If my car is stolen, what case will it be in law?",
+      "If I am arrested without a warrant, is that legal?",
+      "If someone denies me a job because of my caste, is that allowed?",
+      "If the government takes my land for a project, can I stop it?",
+      "If my child is forced to work in a factory, is that legal?",
+      "If I am stopped from speaking at a protest, is that against my rights?",
+      "If a religious place stops me from entering because I'm a woman, is that constitutional?",
+      "If I change my religion, can the government stop me?",
+      "If the police torture someone in custody, what right is being violated?",
+      "If I'm denied admission to a public university because I'm from a backward community, can I do something?"
+    ]
+  }
+]
